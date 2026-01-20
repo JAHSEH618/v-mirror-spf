@@ -1,0 +1,46 @@
+# Dependencies
+node_modules
+
+# Build outputs
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+/extensions/*/dist
+
+# Database
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+
+# Environment variables
+.env
+.env.*
+
+# Shopify
+.shopify/*
+.shopify.lock
+
+# React Router
+.react-router/
+
+# IDE & Editors
+.cursor
+.gemini
+.idea
+.vscode
+
+# System files
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# MCP config
+.mcp.json

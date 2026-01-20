@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model WidgetSettings {
+  id                 String   @id @default(uuid())
+  shop               String   @unique
+  
+  // Position
+  position           String   @default("bottom-right")
+  horizontalOffset   Int      @default(20)
+  verticalOffset     Int      @default(20)
+  
+  // Appearance
+  primaryColor       String   @default("#7C3AED")
+  textColor          String   @default("#FFFFFF")
+  logoUrl            String?
+  
+  // Text Content
+  buttonText         String   @default("Try It On")
+  tooltipText        String   @default("See how it looks on you!")
+  modalTitle         String   @default("AI Virtual Try-On")
+  uploadInstructions String   @default("Upload a full-body photo for best results")
+  
+  // Advanced
+  smartDetection     Boolean  @default(false)
+  showOnMobile       Boolean  @default(true)
+  animationStyle     String   @default("fade-in")
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}

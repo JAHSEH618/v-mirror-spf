@@ -1,0 +1,244 @@
+{% comment %}
+  AI Virtual Try-On Floating Widget
+  This block renders a floating button that triggers the try-on modal
+  Only shows on product pages with clothing items
+{% endcomment %}
+
+{% if request.page_type == 'product' %}
+  {% comment %} Check if product is a clothing item (optional smart display) {% endcomment %}
+  {% assign is_clothing = false %}
+  {% assign clothing_types = 'Clothing,Apparel,Tops,Bottoms,Dresses,Jackets,Coats,Shirts,T-Shirts,Pants,Jeans,Skirts,Sweaters,Hoodies' | split: ',' %}
+  
+  {% for type in product.type %}
+    {% for clothing_type in clothing_types %}
+      {% if product.type contains clothing_type %}
+        {% assign is_clothing = true %}
+        {% break %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+  
+  {% comment %} Always show if smart detection is disabled {% endcomment %}
+  {% unless block.settings.smart_detection %}
+    {% assign is_clothing = true %}
+  {% endunless %}
+
+  {% if is_clothing %}
+    <!-- Floating Widget Button -->
+    <div 
+      id="v-mirror-widget" 
+      class="v-mirror-floating-widget"
+      style="
+        --widget-primary-color: {{ block.settings.primary_color }};
+        --widget-text-color: {{ block.settings.text_color }};
+        --widget-position-h: {{ block.settings.horizontal_offset }}px;
+        --widget-position-v: {{ block.settings.vertical_offset }}px;
+        {% if block.settings.position == 'bottom-left' %}
+          left: var(--widget-position-h);
+          right: auto;
+        {% else %}
+          right: var(--widget-position-h);
+          left: auto;
+        {% endif %}
+        bottom: var(--widget-position-v);
+      "
+    >
+      <button 
+        id="v-mirror-trigger-btn" 
+        class="v-mirror-trigger-btn"
+        aria-label="{{ block.settings.button_text }}"
+        data-product-image="{{ product.featured_image | image_url: width: 800 }}"
+        data-product-title="{{ product.title | escape }}"
+        data-product-id="{{ product.id }}"
+        data-product-variants='{{ product.variants | json }}'
+      >
+        <span class="v-mirror-btn-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 5C13.66 5 15 6.34 15 8C15 9.66 13.66 11 12 11C10.34 11 9 9.66 9 8C9 6.34 10.34 5 12 5ZM12 19.2C9.5 19.2 7.29 17.92 6 15.98C6.03 13.99 10 12.9 12 12.9C13.99 12.9 17.97 13.99 18 15.98C16.71 17.92 14.5 19.2 12 19.2Z" fill="currentColor"/>
+          </svg>
+          <svg class="v-mirror-sparkle" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L13.09 8.26L18.18 6.82L14.73 11.09L20.39 13.27L14.03 14.21L16.5 20L12 15.82L7.5 20L9.97 14.21L3.61 13.27L9.27 11.09L5.82 6.82L10.91 8.26L12 2Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="v-mirror-btn-text">{{ block.settings.button_text }}</span>
+      </button>
+      
+      <!-- Tooltip -->
+      <div class="v-mirror-tooltip" id="v-mirror-tooltip">
+        {{ block.settings.tooltip_text }}
+      </div>
+    </div>
+
+    <!-- Modal Container (will be populated by JS) -->
+    <div id="v-mirror-modal-root"></div>
+
+    <!-- Include styles and scripts -->
+    {{ 'try-on-widget.css' | asset_url | stylesheet_tag }}
+    
+    <script>
+      window.VMirrorConfig = {
+        appProxyUrl: 'https://atm-publishers-acrobat-orchestra.trycloudflare.com',
+        settingsApiUrl: '/apps/v-mirror/api/settings?shop={{ shop.permanent_domain }}',
+        shopDomain: '{{ shop.permanent_domain }}',
+        productImage: "{{ product.featured_image | image_url: width: 800 }}",
+        productTitle: "{{ product.title | escape }}",
+        productId: "{{ product.id }}",
+        // Default settings from theme schema (will be overridden by API settings)
+        modalTitle: "{{ block.settings.modal_title | escape }}",
+        uploadInstructions: "{{ block.settings.upload_instructions | escape }}",
+        primaryColor: "{{ block.settings.primary_color }}",
+        widgetLogo: "{{ block.settings.widget_logo | image_url: width: 400 }}",
+        textColor: "{{ block.settings.text_color }}",
+        animationStyle: "{{ block.settings.animation_style }}",
+        position: "{{ block.settings.position }}",
+        horizontalOffset: {{ block.settings.horizontal_offset }},
+        verticalOffset: {{ block.settings.vertical_offset }},
+        buttonText: "{{ block.settings.button_text | escape }}",
+        tooltipText: "{{ block.settings.tooltip_text | escape }}",
+        smartDetection: {{ block.settings.smart_detection }},
+        showOnMobile: {{ block.settings.show_on_mobile }},
+        variants: {{ product.variants | json }}
+      };
+      
+      // Load settings from API (will override defaults if available)
+      fetch(window.VMirrorConfig.settingsApiUrl)
+        .then(res => res.json())
+        .then(settings => {
+          if (settings && !settings.error) {
+            Object.assign(window.VMirrorConfig, settings);
+            // Re-apply styling if widget is already loaded
+            if (window.VMirrorWidget && window.VMirrorWidget.applySettings) {
+              window.VMirrorWidget.applySettings(settings);
+            }
+          }
+        })
+        .catch(err => console.warn('Failed to load widget settings:', err));
+    </script>
+    {{ 'try-on-widget.js' | asset_url | script_tag }}
+  {% endif %}
+{% endif %}
+
+{% schema %}
+{
+  "name": "AI Try-On Widget",
+  "target": "body",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": [
+    {
+      "type": "header",
+      "content": "Button Position"
+    },
+    {
+      "type": "select",
+      "id": "position",
+      "label": "Position",
+      "options": [
+        { "value": "bottom-right", "label": "Bottom Right" },
+        { "value": "bottom-left", "label": "Bottom Left" }
+      ],
+      "default": "bottom-right"
+    },
+    {
+      "type": "range",
+      "id": "horizontal_offset",
+      "label": "Horizontal offset",
+      "min": 10,
+      "max": 100,
+      "step": 5,
+      "default": 20,
+      "unit": "px"
+    },
+    {
+      "type": "range",
+      "id": "vertical_offset",
+      "label": "Vertical offset",
+      "min": 10,
+      "max": 100,
+      "step": 5,
+      "default": 20,
+      "unit": "px"
+    },
+    {
+      "type": "header",
+      "content": "Appearance"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Primary color",
+      "default": "#7C3AED"
+    },
+    {
+      "type": "image_picker",
+      "id": "widget_logo",
+      "label": "Widget Logo",
+      "info": "Displayed in the modal header"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text color",
+      "default": "#FFFFFF"
+    },
+    {
+      "type": "header",
+      "content": "Text Content"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button text",
+      "default": "Try It On"
+    },
+    {
+      "type": "text",
+      "id": "tooltip_text",
+      "label": "Tooltip text",
+      "default": "See how it looks on you!"
+    },
+    {
+      "type": "text",
+      "id": "modal_title",
+      "label": "Modal title",
+      "default": "AI Virtual Try-On"
+    },
+    {
+      "type": "textarea",
+      "id": "upload_instructions",
+      "label": "Upload instructions",
+      "default": "Upload a full-body photo for best results"
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "checkbox",
+      "id": "smart_detection",
+      "label": "Only show on clothing products",
+      "default": false,
+      "info": "When enabled, widget only appears on products with clothing-related types"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_on_mobile",
+      "label": "Show on mobile",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "animation_style",
+      "label": "Animation style",
+      "options": [
+        { "value": "fade-in", "label": "Fade In" },
+        { "value": "slide-up", "label": "Slide Up" },
+        { "value": "scale", "label": "Scale" },
+        { "value": "bounce", "label": "Bounce" }
+      ],
+      "default": "fade-in"
+    }
+  ]
+}
+{% endschema %}

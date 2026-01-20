@@ -1,0 +1,6 @@
+name = "try-on-widget"
+type = "theme"
+uid = "a9abfcc3-b879-ddaf-269f-945459adb64d416252b7"
+
+[capabilities]
+network_access = true

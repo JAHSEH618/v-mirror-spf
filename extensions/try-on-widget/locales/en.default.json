@@ -1,0 +1,29 @@
+{
+  "tryon": {
+    "widget": {
+      "button_text": "Try It On",
+      "tooltip": "See how it looks on you!",
+      "modal_title": "AI Virtual Try-On",
+      "upload_title": "Upload Your Photo",
+      "upload_instructions": "Upload a full-body photo for best results",
+      "or_choose_model": "or choose a model below",
+      "browse_files": "Browse Files",
+      "change_photo": "Change Photo",
+      "quick_try": "Quick Try: Select a Model",
+      "color_label": "Color",
+      "generate_button": "Generate Try-On",
+      "generating": "Generating your try-on...",
+      "generating_time": "This usually takes 10-15 seconds",
+      "download": "Download",
+      "add_to_cart": "Add to Cart",
+      "share": "Share",
+      "try_another": "Try Another Photo",
+      "error_message": "Something went wrong. Please try again.",
+      "retry": "Retry",
+      "added_to_cart": "Added!",
+      "file_type_error": "Please upload a JPG, PNG, or WebP image.",
+      "file_size_error": "File size must be less than 5MB.",
+      "link_copied": "Link copied to clipboard!"
+    }
+  }
+}
