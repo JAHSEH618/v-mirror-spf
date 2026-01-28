@@ -9,6 +9,41 @@
   {% assign is_clothing = false %}
   {% assign clothing_types = 'Clothing,Apparel,Tops,Bottoms,Dresses,Jackets,Coats,Shirts,T-Shirts,Pants,Jeans,Skirts,Sweaters,Hoodies' | split: ',' %}
   
+  {% comment %} Garment type detection for Vertex AI API {% endcomment %}
+  {% assign garment_type = '' %}
+  
+  {% comment %} Try to get category from Shopify Standard Product Category {% endcomment %}
+  {% assign product_category = '' %}
+  {% if product.category %}
+    {% assign product_category = product.category.name | downcase %}
+  {% endif %}
+  
+  {% comment %} Fallback to product type if category is empty {% endcomment %}
+  {% assign product_type_lower = product.type | downcase %}
+  {% assign detection_source = product_category %}
+  {% if detection_source == '' %}
+    {% assign detection_source = product_type_lower %}
+  {% endif %}
+  
+  {% comment %} Check for dresses (priority) {% endcomment %}
+  {% if detection_source contains 'dress' or detection_source contains 'gown' or detection_source contains 'romper' or detection_source contains 'jumpsuit' or detection_source contains 'maxi' %}
+    {% assign garment_type = 'dresses' %}
+  {% endif %}
+
+  {% comment %} Check for tops (shirts, sweaters, jackets, etc) {% endcomment %}
+  {% if garment_type == '' %}
+    {% if detection_source contains 'top' or detection_source contains 'shirt' or detection_source contains 'tee' or detection_source contains 'sweater' or detection_source contains 'hoodie' or detection_source contains 'jacket' or detection_source contains 'coat' or detection_source contains 'blazer' or detection_source contains 'blouse' or detection_source contains 'cardigan' or detection_source contains 'vest' or detection_source contains 'tank' or detection_source contains 'polo' or detection_source contains 'pullover' or detection_source contains 'outerwear' %}
+      {% assign garment_type = 'tops' %}
+    {% endif %}
+  {% endif %}
+  
+  {% comment %} Check for bottoms (pants, jeans, skirts, etc) {% endcomment %}
+  {% if garment_type == '' %}
+    {% if detection_source contains 'bottom' or detection_source contains 'pant' or detection_source contains 'jean' or detection_source contains 'skirt' or detection_source contains 'short' or detection_source contains 'trouser' or detection_source contains 'legging' or detection_source contains 'chino' %}
+      {% assign garment_type = 'bottoms' %}
+    {% endif %}
+  {% endif %}
+  
   {% for type in product.type %}
     {% for clothing_type in clothing_types %}
       {% if product.type contains clothing_type %}
@@ -77,12 +112,16 @@
     
     <script>
       window.VMirrorConfig = {
-        appProxyUrl: 'https://atm-publishers-acrobat-orchestra.trycloudflare.com',
+        appProxyUrl: '/apps/v-mirror',
         settingsApiUrl: '/apps/v-mirror/api/settings?shop={{ shop.permanent_domain }}',
         shopDomain: '{{ shop.permanent_domain }}',
         productImage: "{{ product.featured_image | image_url: width: 800 }}",
         productTitle: "{{ product.title | escape }}",
         productId: "{{ product.id }}",
+        productType: "{{ product.type | escape }}",
+        productCategory: "{% if product.category %}{{ product.category.name | escape }}{% endif %}",
+        productTags: {{ product.tags | json }},
+        garmentType: "{{ garment_type }}",
         // Default settings from theme schema (will be overridden by API settings)
         modalTitle: "{{ block.settings.modal_title | escape }}",
         uploadInstructions: "{{ block.settings.upload_instructions | escape }}",

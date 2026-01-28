@@ -1,6 +1,7 @@
-import { useLoaderData } from "react-router";
-import { useState, useEffect } from "react";
-import { authenticate } from "../shopify.server";
+import { useLoaderData, useRevalidator } from "react-router";
+import { useEffect } from "react";
+import { authenticate, apiVersion } from "../shopify.server";
+import { DashboardLayout } from "../components/DashboardLayout";
 import adminStyles from "../styles/admin.css?url";
 
 export const links = () => [
@@ -9,256 +10,209 @@ export const links = () => [
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
-
   let isEmbedEnabled = false;
 
   try {
-    // 1. Get the main theme (requires read_themes scope)
+    // 1. Get Main Theme ID
     const themesResponse = await admin.graphql(
       `#graphql
-      query getThemes {
-        themes(first: 5, roles: MAIN) {
-          nodes {
-            id
-          }
-        }
-      }`
+            query getThemes {
+                themes(first: 5, roles: MAIN) {
+                    nodes {
+                        id
+                    }
+                }
+            }`
     );
     const themesData = await themesResponse.json();
-    const mainTheme = themesData.data?.themes?.nodes?.[0];
+    const mainThemeId = themesData.data?.themes?.nodes?.[0]?.id;
 
-    if (mainTheme) {
-      // 2. Get settings_data.json
-      const assetResponse = await admin.rest.resources.Asset.all({
-        session,
-        theme_id: mainTheme.id.replace('gid://shopify/Theme/', ''),
-        asset: { key: 'config/settings_data.json' },
-      });
+    console.log("=== Theme Detection Start ===");
+    console.log("mainThemeId:", mainThemeId);
 
-      if (assetResponse && assetResponse.length > 0) {
-        try {
-          const settingsData = JSON.parse(assetResponse[0].value);
+    if (mainThemeId) {
+      // 2. Get Asset (settings_data.json)
+      try {
+        // Extract numeric ID from GID (handles both Theme and OnlineStoreTheme formats)
+        const themeId = mainThemeId.split('/').pop();
+        console.log("Fetching settings_data.json for themeId:", themeId);
+
+        const response = await fetch(
+          `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": session.accessToken
+            }
+          }
+        );
+
+        console.log("REST API response status:", response.status);
+        const json = await response.json();
+        const asset = json.asset;
+        console.log("Asset found:", !!asset, "Has value:", !!asset?.value);
+
+        if (asset && asset.value) {
+          const settingsData = JSON.parse(asset.value);
           const blocks = settingsData.current?.blocks || {};
 
-          // Check for our block
-          const TARGET_EXTENSION_ID = "a9abfcc3-b879-ddaf-269f-945459adb64d416252b7";
+          console.log("=== App Block Detection Debug ===");
+          console.log("Blocks found:", Object.keys(blocks).length);
+
+          // Check for the extension by handle "try-on-widget" in the block type URI
+          // Format usually: shopify://apps/<app-id>/blocks/<handle>/<uuid>
           isEmbedEnabled = Object.values(blocks).some((block) => {
-            return block.type.includes(TARGET_EXTENSION_ID) && block.disabled !== true;
+            const typeMatch = block.type.includes("try-on-widget");
+            const notDisabled = String(block.disabled) !== "true";
+            console.log(`Block type: ${block.type}, typeMatch: ${typeMatch}, disabled: ${block.disabled}, notDisabled: ${notDisabled}`);
+            return typeMatch && notDisabled;
           });
-        } catch (e) {
-          console.error("Failed to parse settings_data.json", e);
+
+          console.log("isEmbedEnabled result:", isEmbedEnabled);
+          console.log("================================");
         }
+      } catch (restError) {
+        console.warn("REST Asset check failed:", restError);
+        // Fallback or ignore if REST is unavailable
       }
     }
   } catch (error) {
-    // If read_themes scope is not available, we'll default to isEmbedEnabled = false
-    console.warn("Could not check theme status (read_themes scope may be missing):", error.message);
+    console.warn("Theme check failed:", error);
   }
 
   return { shop: session.shop, isEmbedEnabled };
 };
 
-export default function Index() {
+export default function Dashboard() {
   const { shop, isEmbedEnabled } = useLoaderData();
-  const [manualConfirmed, setManualConfirmed] = useState(false);
+  const revalidator = useRevalidator();
 
-  // Load manual confirmation state from localStorage
+  // Poll for status change if not enabled
   useEffect(() => {
-    const saved = localStorage.getItem('v-mirror-embed-confirmed');
-    if (saved === 'true') {
-      setManualConfirmed(true);
+    if (!isEmbedEnabled) {
+      const interval = setInterval(() => {
+        revalidator.revalidate();
+      }, 2500);
+      return () => clearInterval(interval);
     }
-  }, []);
+  }, [isEmbedEnabled, revalidator]);
 
-  const handleManualConfirm = () => {
-    setManualConfirmed(true);
-    localStorage.setItem('v-mirror-embed-confirmed', 'true');
-  };
-
-  const handleOpenThemeEditor = () => {
-    // Deep link to Theme Editor App embeds section
-    const url = `https://${shop}/admin/themes/current/editor?context=apps`;
-    window.open(url, '_blank');
-  };
-
-  const handleViewDemo = () => {
-    window.open(`https://${shop}`, '_blank');
-  };
-
-  const handleViewDocumentation = () => {
-    window.open('https://docs.shopify.com', '_blank');
-  };
-
-  // Combined status: either auto-detected or manually confirmed
-  const isStep2Complete = isEmbedEnabled || manualConfirmed;
-
-  const steps = [
-    {
-      id: 1,
-      title: 'Install App Extension',
-      description: 'The app is installed. We require access to your Online Store theme to inject the floating widget.',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20.5 18a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0z" />
-          <path d="M4 18a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0z" />
-          <path d="M15.5 6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
-          <path d="M8.5 6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
-          <rect x="2" y="10" width="20" height="4" rx="1" />
-        </svg>
-      ),
-      status: 'completed',
-    },
-    {
-      id: 2,
-      title: 'Enable in Theme Editor',
-      description: 'Go to your theme customizer and enable the AI Try-On app block.',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2v20M2 12h20" />
-          <path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0" />
-        </svg>
-      ),
-      status: isStep2Complete ? 'completed' : 'action-required',
-      actionButton: {
-        label: 'Open Theme Editor',
-        onClick: handleOpenThemeEditor,
-        variant: 'primary',
-      },
-      showConfirmButton: !isStep2Complete,
-    },
-    {
-      id: 3,
-      title: 'Test & Go Live',
-      description: 'Try the virtual try-on feature on a product page.',
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-          <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-          <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-          <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-        </svg>
-      ),
-      status: isStep2Complete ? 'action-required' : 'pending',
-      actionButton: {
-        label: 'View Store',
-        onClick: handleViewDemo,
-        variant: isStep2Complete ? 'primary' : 'secondary',
-      },
-    },
-  ];
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'completed':
-        return (
-          <span className="badge badge-completed">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            Completed
-          </span>
-        );
-      case 'action-required':
-        return (
-          <span className="badge badge-action">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            Action Required
-          </span>
-        );
-      case 'pending':
-        return (
-          <span className="badge badge-pending">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            Pending
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
+  const activeStepId = !isEmbedEnabled ? 2 : 3;
 
   return (
-    <s-page heading="Get Started with AI Virtual Try-On">
-      <div className="onboarding-container">
-        <div className="header-section">
-          <p className="subtitle">Follow these steps to set up your virtual try-on experience</p>
-        </div>
+    <DashboardLayout merchantName={shop.split('.')[0]}>
+      {/* Welcome Header */}
+      <div className="header-section">
+        <h1 className="title">Get Started with AI Virtual Try-On</h1>
+      </div>
 
-        <div className="steps-list">
-          {steps.map((step) => (
-            <div key={step.id} className="step-card">
-              <div className="step-content-wrapper">
-                <div className="icon-wrapper">
-                  {step.icon}
-                </div>
-
-                <div className="step-details">
-                  <div className="step-header">
-                    <div className="step-title-group">
-                      <span className="step-number">{step.id}</span>
-                      <h3 className="step-title">{step.title}</h3>
-                    </div>
-                    {getStatusBadge(step.status)}
-                  </div>
-
-                  <p className="step-description">{step.description}</p>
-
-                  <div className="btn-group">
-                    {step.actionButton && (
-                      <button
-                        onClick={step.actionButton.onClick}
-                        className={`btn ${step.actionButton.variant === 'primary' ? 'btn-primary' : 'btn-secondary'}`}
-                      >
-                        {step.actionButton.label}
-                      </button>
-                    )}
-
-                    {step.showConfirmButton && (
-                      <button
-                        onClick={handleManualConfirm}
-                        className="confirm-btn"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        I've Enabled It
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="help-section">
+      {/* Onboarding Steps */}
+      <div className="steps-list">
+        {/* Step 1: Install */}
+        <div className="step-card">
           <div className="step-content-wrapper">
-            <div className="icon-wrapper" style={{ width: '3rem', height: '3rem', backgroundColor: '#F3F4F6', color: '#6B7280' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
+            <div className="icon-wrapper" style={{ backgroundColor: '#10B981' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
               </svg>
             </div>
-            <div>
-              <h3 className="step-title" style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>Need Help?</h3>
-              <p className="subtitle" style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                Check our documentation or contact support.
+            <div className="step-details">
+              <div className="step-header">
+                <div className="step-title-group">
+                  <span className="step-number">1</span>
+                  <h3 className="step-title">Install App Extension</h3>
+                </div>
+                <span className="badge badge-completed">✓ Completed</span>
+              </div>
+              <p className="step-description">
+                The app is installed in your store
               </p>
-              <button onClick={handleViewDocumentation} className="help-link">
-                View Documentation →
+            </div>
+          </div>
+        </div>
+
+        {/* Step 2: Enable */}
+        <div className={`step-card ${activeStepId === 2 ? 'active-step' : ''}`}>
+          <div className="step-content-wrapper">
+            <div className="icon-wrapper" style={{ backgroundColor: activeStepId === 2 ? '#7C3AED' : '#E5E7EB' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={activeStepId === 2 ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </div>
+            <div className="step-details">
+              <div className="step-header">
+                <div className="step-title-group">
+                  <span className="step-number" style={{ color: activeStepId === 2 ? '#7C3AED' : '#D1D5DB' }}>2</span>
+                  <h3 className="step-title">Enable in Theme Editor</h3>
+                </div>
+                {isEmbedEnabled ? (
+                  <span className="badge badge-completed">✓ Completed</span>
+                ) : (
+                  <span className="badge badge-action">⚠ Action Required</span>
+                )}
+              </div>
+              <p className="step-description">
+                {isEmbedEnabled
+                  ? "Great! The app block is enabled in your theme."
+                  : "Go to your theme customizer and enable the AI Try-On app block."}
+              </p>
+              {!isEmbedEnabled && (
+                <button
+                  className="btn btn-primary"
+                  onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
+                >
+                  Open Theme Editor
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3: Test */}
+        <div className={`step-card ${activeStepId === 3 ? 'active-step' : ''}`} style={{ opacity: !isEmbedEnabled ? 0.5 : 1 }}>
+          <div className="step-content-wrapper">
+            <div className="icon-wrapper" style={{ backgroundColor: activeStepId === 3 ? '#7C3AED' : '#E5E7EB' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={activeStepId === 3 ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            </div>
+            <div className="step-details">
+              <div className="step-header">
+                <div className="step-title-group">
+                  <span className="step-number" style={{ color: activeStepId === 3 ? '#7C3AED' : '#D1D5DB' }}>3</span>
+                  <h3 className="step-title">Test & Go Live</h3>
+                </div>
+                <span className="badge badge-pending">Pending</span>
+              </div>
+              <p className="step-description">
+                Try the virtual try-on feature on a product page
+              </p>
+              <button
+                className="btn btn-secondary"
+                disabled={!isEmbedEnabled}
+                onClick={() => window.open(`https://${shop}`, '_blank')}
+              >
+                View Demo
               </button>
             </div>
           </div>
         </div>
       </div>
-    </s-page>
+
+      {/* Help Section */}
+      <div className="help-section">
+        <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem', color: '#111827' }}>Need Help?</h3>
+        <p style={{ color: '#6B7280', fontSize: '0.875rem', marginBottom: '1rem' }}>
+          Check our documentation or contact support
+        </p>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button className="help-link">View Documentation</button>
+          <button className="help-link">Contact Support</button>
+        </div>
+      </div>
+    </DashboardLayout>
   );
 }

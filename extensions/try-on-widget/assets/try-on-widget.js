@@ -310,6 +310,7 @@
         return `
       <div class="v-mirror-preview-container">
         <img src="${state.userPhoto}" alt="Your photo" class="v-mirror-preview-image" />
+        <input type="file" id="v-mirror-reupload-input" class="v-mirror-file-input" accept="image/jpeg,image/png,image/webp" style="display:none" />
         <button class="v-mirror-change-photo-btn" id="v-mirror-change-photo">Change Photo</button>
       </div>
     `;
@@ -445,18 +446,29 @@
             uploadArea.addEventListener('dragover', handleDragOver);
             uploadArea.addEventListener('dragleave', handleDragLeave);
             uploadArea.addEventListener('drop', handleDrop);
-            uploadArea.addEventListener('click', () => {
+            uploadArea.addEventListener('click', (e) => {
+                // Prevent triggering input.click() if clicking on the label or input itself
+                // This fixes the issue where first click fails due to double-triggering
+                if (e.target.tagName === 'LABEL' || e.target.tagName === 'INPUT' ||
+                    e.target.classList.contains('v-mirror-browse-btn')) {
+                    return;
+                }
                 const input = document.getElementById('v-mirror-file-input');
                 if (input) input.click();
             });
         }
 
-        // Change photo button
+
+        // Change photo button - directly open file picker for re-upload
         const changePhotoBtn = document.getElementById('v-mirror-change-photo');
-        if (changePhotoBtn) {
-            changePhotoBtn.addEventListener('click', () => {
-                state.userPhoto = null;
-                renderModal();
+        const reuploadInput = document.getElementById('v-mirror-reupload-input');
+        if (changePhotoBtn && reuploadInput) {
+            // Bind change event for re-upload input
+            reuploadInput.addEventListener('change', handleFileUpload);
+
+            changePhotoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                reuploadInput.click();
             });
         }
 
@@ -628,8 +640,30 @@
         try {
             const productImage = state.selectedVariant?.featured_image?.src || config.productImage;
 
+            // DEBUG: Log the API URL we are about to hit
+            const apiUrl = `${config.appProxyUrl}/api/try-on/start`;
+            const pingUrl = `${config.appProxyUrl}/api/try-on/ping`;
+            console.log(`[V-Mirror] Base App Proxy URL: ${config.appProxyUrl}`);
+            console.log(`[V-Mirror] Target API URL: ${apiUrl}`);
+
+            // Test connectivity first
+            try {
+                console.log(`[V-Mirror] Pinging ${pingUrl}...`);
+                const pingRes = await fetch(pingUrl);
+                if (pingRes.ok) {
+                    const pingData = await pingRes.json();
+                    console.log('[V-Mirror] Ping success:', pingData);
+                } else {
+                    console.warn('[V-Mirror] Ping failed:', pingRes.status);
+                }
+            } catch (pingErr) {
+                console.error('[V-Mirror] Ping connection error:', pingErr);
+            }
+
             // Start try-on generation
-            const startResponse = await fetch(`${config.appProxyUrl}/api/try-on/start`, {
+            console.log('[V-Mirror] Starting generation request...');
+            console.log('[V-Mirror] Garment type:', config.garmentType || 'auto-detect');
+            const startResponse = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -638,36 +672,61 @@
                     userImage: state.userPhoto,
                     garmentImage: productImage,
                     productId: config.productId,
+                    garmentType: config.garmentType || null,
                 }),
             });
 
             if (!startResponse.ok) {
                 const errorText = await startResponse.text();
                 console.error('[V-Mirror] Generation failed:', startResponse.status, errorText);
-                throw new Error(`Failed to start generation: ${startResponse.status} ${startResponse.statusText}`);
+                throw new Error(`Failed to generate: ${startResponse.status} ${startResponse.statusText}`);
             }
 
-            const startData = await startResponse.json();
-            console.log('[V-Mirror] Generation started:', startData);
+            const responseData = await startResponse.json();
+            console.log('[V-Mirror] API Response:', responseData);
 
-            if (startData.error) {
-                throw new Error(startData.error);
+            if (responseData.error) {
+                throw new Error(responseData.error);
             }
 
-            state.taskId = startData.taskId || startData.id;
+            // Check if we got an immediate result (Google Vertex AI - synchronous)
+            if (responseData.output || responseData.outputType === 'url') {
+                console.log('[V-Mirror] Synchronous response - got result immediately');
 
-            // Start polling for results
-            pollForResult();
+                let resultSrc = responseData.output;
+                if (responseData.outputType === 'url') {
+                    // Determine if output is absolute or relative
+                    if (resultSrc && !resultSrc.startsWith('http') && !resultSrc.startsWith('//')) {
+                        const relativePath = resultSrc.startsWith('/') ? resultSrc.slice(1) : resultSrc;
+                        resultSrc = `${config.appProxyUrl}/${relativePath}`;
+                        console.log('[V-Mirror] Constructed result URL:', resultSrc);
+                    }
+                }
+
+                state.resultImage = resultSrc;
+                state.viewState = 'result';
+                renderModal();
+                return;
+            }
+
+            // Fallback: If we got a taskId, use polling (legacy KlingAI behavior)
+            if (responseData.taskId || responseData.id) {
+                console.log('[V-Mirror] Async response - starting polling');
+                state.taskId = responseData.taskId || responseData.id;
+                pollForResult();
+            } else {
+                throw new Error('Unexpected API response format');
+            }
         } catch (error) {
             console.error('[V-Mirror] Generation error:', error);
             state.viewState = 'error';
-            // Show error details in modal if possible
             const errorMsg = document.getElementById('v-mirror-error-msg');
             if (errorMsg) errorMsg.textContent = error.message;
 
             renderModal();
         }
     }
+
 
     function pollForResult() {
         let attempts = 0;

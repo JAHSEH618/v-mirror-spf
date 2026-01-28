@@ -61,3 +61,65 @@ model WidgetSettings {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
+
+model BillingInfo {
+  id                 String   @id @default(uuid())
+  shop               String   @unique
+  
+  // Subscription Plan
+  planName           String   @default("Free Plan")
+  status             String   @default("ACTIVE") // ACTIVE, CANCELLED, FROZEN
+  
+  // Usage Limits
+  usageLimit         Int      @default(10)      // Monthly limit
+  currentUsage       Int      @default(0)       // Usage in current cycle
+  cycleStartDate     DateTime @default(now())
+  
+  // Payment Info Snapshot (Legacy/Cached)
+  paymentType        String?  @default("CREDIT_CARD")
+  cardBrand          String?
+  cardLast4          String?
+  cardExpiry         String?
+  
+  paymentMethods     PaymentMethod[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model PaymentMethod {
+  id            String      @id @default(uuid())
+  billingInfo   BillingInfo @relation(fields: [billingInfoId], references: [id])
+  billingInfoId String
+  
+  brand         String      // visa, mastercard, amex
+  last4         String
+  expiry        String      // MM/YYYY
+  isDefault     Boolean     @default(false)
+  
+  createdAt     DateTime    @default(now())
+}
+
+model BillingHistory {
+  id                 String   @id @default(uuid())
+  shop               String
+  
+  date               DateTime @default(now())
+  description        String
+  amount             Float
+  currency           String   @default("USD")
+  status             String   @default("PAID") // PAID, PENDING, FAILED
+  invoiceUrl         String?
+  
+  createdAt          DateTime @default(now())
+}
+
+model UsageStat {
+  id                 String   @id @default(uuid())
+  shop               String
+  
+  date               DateTime @default(now()) // The date of usage
+  count              Int      @default(0)     // Usage count for this day
+  
+  @@unique([shop, date]) // One record per shop per day (ideally truncate date to day)
+}

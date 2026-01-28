@@ -16,6 +16,24 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
+  billing: {
+    // Defines the billing plans for the app
+    // We will use this in layout/loaders to check subscription
+    "Professional Plan": {
+      amount: 49.00,
+      currencyCode: "USD",
+      interval: "EVERY_30_DAYS",
+      trialDays: 14,
+      replacementBehavior: "APPLY_IMMEDIATELY"
+    },
+    "Enterprise Plan": {
+      amount: 199.00,
+      currencyCode: "USD",
+      interval: "EVERY_30_DAYS",
+      trialDays: 14,
+      replacementBehavior: "APPLY_IMMEDIATELY"
+    }
+  },
   future: {
     expiringOfflineAccessTokens: true,
   },
