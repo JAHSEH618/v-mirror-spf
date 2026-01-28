@@ -123,3 +123,21 @@ model UsageStat {
   
   @@unique([shop, date]) // One record per shop per day (ideally truncate date to day)
 }
+
+model ProductStat {
+  id             String   @id @default(uuid())
+  shop           String
+  productId      String   // Shopify Product ID
+  productTitle   String
+  productImage   String?
+  
+  tryOnCount     Int      @default(0)
+  addToCartCount Int      @default(0) // Kept for funnel analysis
+  orderedCount   Int      @default(0) // New: For final conversion
+  revenue        Float    @default(0.0) // New: For revenue impact
+  
+  lastTryOn      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([shop, productId])
+}

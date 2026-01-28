@@ -398,7 +398,21 @@ export const action = async ({ request }) => {
             });
         }
 
-        const { userImage, garmentImage, garmentType } = body;
+        const { userImage, garmentImage, garmentType, productId, productTitle } = body;
+
+        // CHECK BILLING LIMITS
+        const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
+        if (billingInfo) {
+            if (billingInfo.currentUsage >= billingInfo.usageLimit) {
+                return new Response(JSON.stringify({
+                    error: "Usage limit exceeded. Please upgrade your plan.",
+                    code: "LIMIT_EXCEEDED"
+                }), {
+                    status: 402, // Payment Required
+                    headers: corsHeaders
+                });
+            }
+        }
 
         if (!userImage || !garmentImage) {
             return new Response(JSON.stringify({
@@ -501,6 +515,78 @@ export const action = async ({ request }) => {
         const mimeType = predictions[0].mimeType || "image/png";
 
         console.log(`[API Debug] Success! Generated image size: ${resultBase64.length} bytes`);
+
+        // TRACK USAGE & PRODUCT STATS
+        try {
+            const now = new Date();
+            // Truncate to current hour (precision to hour)
+            const currentHour = new Date(now);
+            currentHour.setMinutes(0, 0, 0);
+
+            // 1. Increment Shop Usage (Hourly)
+            const usageStat = await prisma.usageStat.findUnique({
+                where: {
+                    shop_date: {
+                        shop,
+                        date: currentHour
+                    }
+                }
+            });
+
+            if (usageStat) {
+                await prisma.usageStat.update({
+                    where: { id: usageStat.id },
+                    data: { count: { increment: 1 } }
+                });
+            } else {
+                await prisma.usageStat.create({
+                    data: {
+                        shop,
+                        date: currentHour,
+                        count: 1
+                    }
+                });
+            }
+
+            // 2. Increment Billing Info (Total Usage for Cycle)
+            await prisma.billingInfo.update({
+                where: { shop },
+                data: { currentUsage: { increment: 1 } }
+            });
+
+            // 3. Increment Product Stats (Attribution)
+            if (productId && productTitle) {
+                const pId = String(productId);
+                const existingProduct = await prisma.productStat.findUnique({
+                    where: { shop_productId: { shop, productId: pId } }
+                });
+
+                if (existingProduct) {
+                    await prisma.productStat.update({
+                        where: { id: existingProduct.id },
+                        data: {
+                            tryOnCount: { increment: 1 },
+                            lastTryOn: new Date()
+                        }
+                    });
+                } else {
+                    await prisma.productStat.create({
+                        data: {
+                            shop,
+                            productId: pId,
+                            productTitle,
+                            productImage: garmentImage, // Store initial image as ref
+                            tryOnCount: 1
+                        }
+                    });
+                }
+                console.log(`[API Debug] Tracked stats for product: ${productTitle} (${pId})`);
+            }
+
+        } catch (dbError) {
+            console.error("[API Debug] Failed to track usage stats:", dbError);
+            // Don't block response if stats fail
+        }
 
         // SAVE TO SHOPIFY FILES INSTEAD OF LOCAL DISK
         try {

@@ -2,6 +2,7 @@ import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
@@ -33,6 +34,12 @@ const shopify = shopifyApp({
       trialDays: 14,
       replacementBehavior: "APPLY_IMMEDIATELY"
     }
+  },
+  webhooks: {
+    ORDERS_CREATE: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/app/orders_create",
+    },
   },
   future: {
     expiringOfflineAccessTokens: true,

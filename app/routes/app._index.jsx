@@ -100,118 +100,109 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout merchantName={shop.split('.')[0]}>
-      {/* Welcome Header */}
-      <div className="header-section">
-        <h1 className="title">Get Started with AI Virtual Try-On</h1>
-      </div>
+      <div className="onboarding-page-layout">
 
-      {/* Onboarding Steps */}
-      <div className="steps-list">
-        {/* Step 1: Install */}
-        <div className="step-card">
-          <div className="step-content-wrapper">
-            <div className="icon-wrapper" style={{ backgroundColor: '#10B981' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-            </div>
-            <div className="step-details">
-              <div className="step-header">
-                <div className="step-title-group">
-                  <span className="step-number">1</span>
-                  <h3 className="step-title">Install App Extension</h3>
-                </div>
-                <span className="badge badge-completed">✓ Completed</span>
-              </div>
-              <p className="step-description">
-                The app is installed in your store
-              </p>
-            </div>
-          </div>
+        {/* Hero Section */}
+        <div className="onboarding-hero">
+          <h1 className="hero-title">Welcome to Virtual Try-On</h1>
+          <p className="hero-subtitle">You're just a few steps away from transforming your customer experience.</p>
         </div>
 
-        {/* Step 2: Enable */}
-        <div className={`step-card ${activeStepId === 2 ? 'active-step' : ''}`}>
-          <div className="step-content-wrapper">
-            <div className="icon-wrapper" style={{ backgroundColor: activeStepId === 2 ? '#7C3AED' : '#E5E7EB' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={activeStepId === 2 ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        {/* Steps Container */}
+        <div className="onboarding-steps-container">
+
+          {/* Step 1: Install (Completed) */}
+          <div className="onboarding-step-card completed">
+            <div className="step-icon-box">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </div>
-            <div className="step-details">
-              <div className="step-header">
-                <div className="step-title-group">
-                  <span className="step-number" style={{ color: activeStepId === 2 ? '#7C3AED' : '#D1D5DB' }}>2</span>
-                  <h3 className="step-title">Enable in Theme Editor</h3>
-                </div>
+            <div className="step-content">
+              <div className="step-top">
+                <span className="step-label">Step 1</span>
+                <span className="status-badge success">Completed</span>
+              </div>
+              <h3 className="step-heading">App Installation</h3>
+              <p className="step-desc">The app has been successfully installed on your store.</p>
+            </div>
+          </div>
+
+          {/* Step 2: Enable App Block */}
+          <div className={`onboarding-step-card ${activeStepId === 2 ? 'active' : 'completed'}`}>
+            <div className="step-icon-box">
+              {isEmbedEnabled ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              ) : (
+                <span>2</span>
+              )}
+            </div>
+            <div className="step-content">
+              <div className="step-top">
+                <span className="step-label">Step 2</span>
                 {isEmbedEnabled ? (
-                  <span className="badge badge-completed">✓ Completed</span>
+                  <span className="status-badge success">Completed</span>
                 ) : (
-                  <span className="badge badge-action">⚠ Action Required</span>
+                  <span className="status-badge action">Action Required</span>
                 )}
               </div>
-              <p className="step-description">
+              <h3 className="step-heading">Enable App Block</h3>
+              <p className="step-desc">
                 {isEmbedEnabled
-                  ? "Great! The app block is enabled in your theme."
-                  : "Go to your theme customizer and enable the AI Try-On app block."}
+                  ? "The widget is active on your theme."
+                  : "Enable the 'Virtual Try-On' block in your theme editor to make it visible."}
               </p>
               {!isEmbedEnabled && (
-                <button
-                  className="btn btn-primary"
-                  onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
-                >
-                  Open Theme Editor
-                </button>
+                <div className="step-actions">
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
+                  >
+                    Open Theme Editor &rarr;
+                  </button>
+                </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Step 3: Test */}
-        <div className={`step-card ${activeStepId === 3 ? 'active-step' : ''}`} style={{ opacity: !isEmbedEnabled ? 0.5 : 1 }}>
-          <div className="step-content-wrapper">
-            <div className="icon-wrapper" style={{ backgroundColor: activeStepId === 3 ? '#7C3AED' : '#E5E7EB' }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={activeStepId === 3 ? 'white' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
+          {/* Step 3: Go Live */}
+          <div className={`onboarding-step-card ${activeStepId === 3 ? 'active' : ''}`}>
+            <div className="step-icon-box">
+              <span>3</span>
             </div>
-            <div className="step-details">
-              <div className="step-header">
-                <div className="step-title-group">
-                  <span className="step-number" style={{ color: activeStepId === 3 ? '#7C3AED' : '#D1D5DB' }}>3</span>
-                  <h3 className="step-title">Test & Go Live</h3>
-                </div>
-                <span className="badge badge-pending">Pending</span>
+            <div className="step-content">
+              <div className="step-top">
+                <span className="step-label">Step 3</span>
+                {activeStepId === 3 && <span className="status-badge pending">Next Step</span>}
               </div>
-              <p className="step-description">
-                Try the virtual try-on feature on a product page
-              </p>
-              <button
-                className="btn btn-secondary"
-                disabled={!isEmbedEnabled}
-                onClick={() => window.open(`https://${shop}`, '_blank')}
-              >
-                View Demo
-              </button>
+              <h3 className="step-heading">Preview & Launch</h3>
+              <p className="step-desc">Check your product pages to see the magic in action.</p>
+              <div className="step-actions">
+                <button
+                  className="btn btn-secondary"
+                  disabled={!isEmbedEnabled}
+                  onClick={() => window.open(`https://${shop}`, '_blank')}
+                >
+                  Visit Store
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Help Section */}
-      <div className="help-section">
-        <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem', color: '#111827' }}>Need Help?</h3>
-        <p style={{ color: '#6B7280', fontSize: '0.875rem', marginBottom: '1rem' }}>
-          Check our documentation or contact support
-        </p>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="help-link">View Documentation</button>
-          <button className="help-link">Contact Support</button>
         </div>
+
+        {/* Support Footer */}
+        <div className="onboarding-support">
+          <h3>Need assistance?</h3>
+          <div className="support-links">
+            <a href="#" className="support-link">Read Documentation</a>
+            <span className="divider">•</span>
+            <a href="#" className="support-link">Contact Support</a>
+          </div>
+        </div>
+
       </div>
     </DashboardLayout>
   );

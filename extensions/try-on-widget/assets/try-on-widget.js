@@ -19,6 +19,7 @@
         selectedVariant: null,
         taskId: null,
         pollInterval: null,
+        lastError: null,
     };
 
     // Example model images for quick try-on
@@ -144,19 +145,15 @@
 
     function openModal() {
         state.isModalOpen = true;
-        state.viewState = 'upload';
-        state.userPhoto = null;
-        state.resultImage = null;
+        // Do not reset state here to allow persistence
+        if (!state.userPhoto) state.viewState = 'upload'; // Ensure valid initial state
         renderModal();
         document.body.style.overflow = 'hidden';
     }
 
     function closeModal() {
         state.isModalOpen = false;
-        if (state.pollInterval) {
-            clearInterval(state.pollInterval);
-            state.pollInterval = null;
-        }
+        // Don't clear pollInterval here so it can finish in background
         modalRoot.innerHTML = '';
         document.body.style.overflow = '';
     }
@@ -165,6 +162,7 @@
     // Modal Rendering
     // ============================================
     function renderModal() {
+        if (!state.isModalOpen) return;
         const animationClass = `animation-${config.animationStyle || 'fade-in'}`;
 
         modalRoot.innerHTML = `
@@ -385,14 +383,14 @@
     }
 
     function renderErrorView() {
+        const errorText = state.lastError || "Something went wrong. Please try again.";
         return `
       <div class="v-mirror-error">
         <svg class="v-mirror-error-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-          <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <p class="v-mirror-error-text">Something went wrong. Please try again.</p>
+        <p class="v-mirror-error-text" id="v-mirror-error-msg">${errorText}</p>
         <button class="v-mirror-retry-btn" id="v-mirror-retry">Retry</button>
       </div>
     `;
@@ -672,18 +670,27 @@
                     userImage: state.userPhoto,
                     garmentImage: productImage,
                     productId: config.productId,
+                    productTitle: config.productTitle || 'Product',
                     garmentType: config.garmentType || null,
                 }),
             });
 
-            if (!startResponse.ok) {
-                const errorText = await startResponse.text();
-                console.error('[V-Mirror] Generation failed:', startResponse.status, errorText);
-                throw new Error(`Failed to generate: ${startResponse.status} ${startResponse.statusText}`);
+            let responseData;
+            try {
+                responseData = await startResponse.json();
+            } catch (e) {
+                // If not JSON, throw status error
+                if (!startResponse.ok) throw new Error(`Server Error: ${startResponse.status}`);
             }
 
-            const responseData = await startResponse.json();
             console.log('[V-Mirror] API Response:', responseData);
+
+            if (!startResponse.ok) {
+                if (responseData && responseData.code === 'LIMIT_EXCEEDED') {
+                    throw new Error('Our virtual fitting room is currently at maximum capacity due to high demand. Please try again later!');
+                }
+                throw new Error(responseData?.error || `Failed to generate: ${startResponse.status}`);
+            }
 
             if (responseData.error) {
                 throw new Error(responseData.error);
@@ -720,9 +727,7 @@
         } catch (error) {
             console.error('[V-Mirror] Generation error:', error);
             state.viewState = 'error';
-            const errorMsg = document.getElementById('v-mirror-error-msg');
-            if (errorMsg) errorMsg.textContent = error.message;
-
+            state.lastError = error.message; // Store error in state for render
             renderModal();
         }
     }
@@ -777,15 +782,63 @@
     // ============================================
     // Action Handlers
     // ============================================
-    function handleDownload() {
+    async function handleDownload() {
         if (!state.resultImage) return;
 
-        const link = document.createElement('a');
-        link.href = state.resultImage;
-        link.download = `try-on-${Date.now()}.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            // Direct download for Data URIs
+            if (state.resultImage.startsWith('data:')) {
+                const link = document.createElement('a');
+                link.href = state.resultImage;
+                link.download = `try-on-${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                return;
+            }
+
+            // For remote URLs (CDN), attempt blob fetch
+            const btn = document.getElementById('v-mirror-download');
+            if (btn) btn.style.opacity = '0.7';
+
+            try {
+                const response = await fetch(state.resultImage, {
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+
+                const link = document.createElement('a');
+                link.style.display = 'none';
+                link.href = url;
+                link.download = `try-on-${Date.now()}.png`;
+
+                document.body.appendChild(link);
+                link.click();
+
+                // Cleanup
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    if (btn) btn.style.opacity = '1';
+                }, 100);
+
+            } catch (fetchError) {
+                // FALLBACK: If blob fetch fails (CORS), open in new tab
+                console.warn('[V-Mirror] Blob download failed, falling back to new tab:', fetchError);
+                window.open(state.resultImage, '_blank');
+                if (btn) btn.style.opacity = '1';
+            }
+
+        } catch (error) {
+            console.error('[V-Mirror] Download error:', error);
+            const btn = document.getElementById('v-mirror-download');
+            if (btn) btn.style.opacity = '1';
+        }
     }
 
     async function handleAddToCart() {
@@ -800,8 +853,26 @@
                 body: JSON.stringify({
                     id: variantId,
                     quantity: 1,
+                    properties: {
+                        '_from_v_mirror': 'true' // Hidden property for attribution tracking
+                    }
                 }),
             });
+
+            // TRACKING: Analytics
+            try {
+                fetch(`${config.appProxyUrl}/api/analytics/track`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        eventType: 'add_to_cart',
+                        productId: config.productId,
+                        productTitle: config.productTitle
+                    })
+                }).catch(e => console.log('[V-Mirror] Tracking error:', e));
+            } catch (e) {
+                // Ignore tracking errors
+            }
 
             if (response.ok) {
                 // Show success feedback
