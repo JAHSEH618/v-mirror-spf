@@ -8,6 +8,7 @@
 **v-mirror-spf** is a state-of-the-art **Shopify Embedded App** that brings the power of Generative AI to fashion e-commerce. By integrating **KlingAI** and **Google Vertex AI**, it enables customers to virtually "try on" clothing items directly on the product page, significantly boosting engagement and reducing return rates.
 
 Built on the robust **Remix** framework and **Shopify App Bridge**, this application offers a compliant, secure, and high-performance solution for modern Shopify merchants.
+> **Now featuring Optimized CDN Delivery and Binary Stream Processing for latency-free interactions.**
 
 [English](./README.md) | [中文说明](./README_zh-CN.md)
 
@@ -20,9 +21,13 @@ Built on the robust **Remix** framework and **Shopify App Bridge**, this applica
 - **AI-Powered Generation**: Generates realistic try-on images in seconds using advanced diffusion models.
 - **Seamless Integration**: Built as a **Shopify App Embed Block**, enabling code-free installation and compatibility with Online Store 2.0 themes.
 - **Responsive Design**: Fully optimized for mobile and desktop shoppers.
+- **Focus Mode**: Immersive full-screen lightbox preview for examining try-on results in detail.
+- **Multi-Language Support**: Automatically detects and serves English, Chinese, Japanese, and Spanish based on user preference.
+- **Smart Device Optimization**: Mobile-first design with touch-friendly interactions and layout adaptations.
 
 ### 💼 Merchant Dashboard
 - **Analytics & Usage**: Track the number of try-ons and subscriber engagement.
+- **Advanced Attribution**: Precise session and fingerprint tracking to understand user behavior across devices.
 - **Customization Settings**:
     - **Appearance**: Adjust widget colors, button text, and positioning to match brand identity.
     - **Logo**: Upload custom branding for the try-on modal.
