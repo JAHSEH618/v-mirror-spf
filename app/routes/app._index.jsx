@@ -2,6 +2,7 @@ import { useLoaderData, useRevalidator } from "react-router";
 import { useEffect } from "react";
 import { authenticate, apiVersion } from "../shopify.server";
 import { DashboardLayout } from "../components/DashboardLayout";
+import { useLanguage } from "../components/LanguageContext";
 import adminStyles from "../styles/admin.css?url";
 
 export const links = () => [
@@ -85,6 +86,7 @@ export const loader = async ({ request }) => {
 export default function Dashboard() {
   const { shop, isEmbedEnabled } = useLoaderData();
   const revalidator = useRevalidator();
+  const { t } = useLanguage();
 
   // Poll for status change if not enabled
   useEffect(() => {
@@ -104,8 +106,8 @@ export default function Dashboard() {
 
         {/* Hero Section */}
         <div className="onboarding-hero">
-          <h1 className="hero-title">Welcome to Virtual Try-On</h1>
-          <p className="hero-subtitle">You're just a few steps away from transforming your customer experience.</p>
+          <h1 className="hero-title">{t('onboarding.title')}</h1>
+          <p className="hero-subtitle">{t('onboarding.subtitle')}</p>
         </div>
 
         {/* Steps Container */}
@@ -120,11 +122,11 @@ export default function Dashboard() {
             </div>
             <div className="step-content">
               <div className="step-top">
-                <span className="step-label">Step 1</span>
-                <span className="status-badge success">Completed</span>
+                <span className="step-label">{t('onboarding.step1.label')}</span>
+                <span className="status-badge success">{t('onboarding.status.completed')}</span>
               </div>
-              <h3 className="step-heading">App Installation</h3>
-              <p className="step-desc">The app has been successfully installed on your store.</p>
+              <h3 className="step-heading">{t('onboarding.step1.title')}</h3>
+              <p className="step-desc">{t('onboarding.step1.desc')}</p>
             </div>
           </div>
 
@@ -141,18 +143,18 @@ export default function Dashboard() {
             </div>
             <div className="step-content">
               <div className="step-top">
-                <span className="step-label">Step 2</span>
+                <span className="step-label">{t('onboarding.step2.label')}</span>
                 {isEmbedEnabled ? (
-                  <span className="status-badge success">Completed</span>
+                  <span className="status-badge success">{t('onboarding.status.completed')}</span>
                 ) : (
-                  <span className="status-badge action">Action Required</span>
+                  <span className="status-badge action">{t('onboarding.status.actionRequired')}</span>
                 )}
               </div>
-              <h3 className="step-heading">Enable App Block</h3>
+              <h3 className="step-heading">{t('onboarding.step2.title')}</h3>
               <p className="step-desc">
                 {isEmbedEnabled
-                  ? "The widget is active on your theme."
-                  : "Enable the 'Virtual Try-On' block in your theme editor to make it visible."}
+                  ? t('onboarding.step2.descEnabled')
+                  : t('onboarding.step2.descDisabled')}
               </p>
               {!isEmbedEnabled && (
                 <div className="step-actions">
@@ -160,7 +162,7 @@ export default function Dashboard() {
                     className="btn btn-primary"
                     onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
                   >
-                    Open Theme Editor &rarr;
+                    {t('onboarding.step2.action')} &rarr;
                   </button>
                 </div>
               )}
@@ -174,18 +176,18 @@ export default function Dashboard() {
             </div>
             <div className="step-content">
               <div className="step-top">
-                <span className="step-label">Step 3</span>
-                {activeStepId === 3 && <span className="status-badge pending">Next Step</span>}
+                <span className="step-label">{t('onboarding.step3.label')}</span>
+                {activeStepId === 3 && <span className="status-badge pending">{t('onboarding.status.nextStep')}</span>}
               </div>
-              <h3 className="step-heading">Preview & Launch</h3>
-              <p className="step-desc">Check your product pages to see the magic in action.</p>
+              <h3 className="step-heading">{t('onboarding.step3.title')}</h3>
+              <p className="step-desc">{t('onboarding.step3.desc')}</p>
               <div className="step-actions">
                 <button
                   className="btn btn-secondary"
                   disabled={!isEmbedEnabled}
                   onClick={() => window.open(`https://${shop}`, '_blank')}
                 >
-                  Visit Store
+                  {t('onboarding.step3.action')}
                 </button>
               </div>
             </div>
@@ -195,11 +197,11 @@ export default function Dashboard() {
 
         {/* Support Footer */}
         <div className="onboarding-support">
-          <h3>Need assistance?</h3>
+          <h3>{t('onboarding.support.title')}</h3>
           <div className="support-links">
-            <a href="#" className="support-link">Read Documentation</a>
+            <a href="#" className="support-link">{t('onboarding.support.docs')}</a>
             <span className="divider">•</span>
-            <a href="#" className="support-link">Contact Support</a>
+            <a href="#" className="support-link">{t('onboarding.support.contact')}</a>
           </div>
         </div>
 
@@ -207,3 +209,4 @@ export default function Dashboard() {
     </DashboardLayout>
   );
 }
+

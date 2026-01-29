@@ -21,12 +21,57 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
+// OPTIMIZATION 2: Google Access Token Caching
+let cachedAccessToken = null;
+let tokenExpiryTime = 0;
+
+// OPTIMIZATION 5: Rate Limiting (in-memory, shop-based)
+const rateLimitStore = new Map();
+
+function checkRateLimit(shop, maxRequests = 100, windowMs = 60000) {
+    const now = Date.now();
+    const record = rateLimitStore.get(shop) || { count: 0, resetTime: now + windowMs };
+
+    if (now > record.resetTime) {
+        record.count = 0;
+        record.resetTime = now + windowMs;
+    }
+
+    record.count++;
+    rateLimitStore.set(shop, record);
+
+    return {
+        allowed: record.count <= maxRequests,
+        remaining: Math.max(0, maxRequests - record.count),
+        resetTime: record.resetTime
+    };
+}
+
+// Clean up old rate limit records every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [shop, record] of rateLimitStore.entries()) {
+        if (now > record.resetTime + 60000) {
+            rateLimitStore.delete(shop);
+        }
+    }
+}, 300000);
+
 // ... [Keep existing helper functions: getAccessToken, isUrl, urlToBase64, ensureBase64] ...
 
 // Helper: Get access token from Service Account (fallback if no API key)
 async function getAccessToken() {
     console.log("[API Debug] Attempting to get access token from Service Account...");
     const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+    // OPTIMIZATION 2: Return cached token if still valid (with 5-minute buffer)
+    const now = Math.floor(Date.now() / 1000);
+    if (cachedAccessToken && tokenExpiryTime > now + 300) {
+        console.log("[API Debug] Using cached access token");
+        return cachedAccessToken;
+    }
+
+    console.log("[API Debug] Generating new access token...");
 
     if (!credentialsPath) {
         throw new Error("GOOGLE_APPLICATION_CREDENTIALS environment variable not set");
@@ -44,7 +89,6 @@ async function getAccessToken() {
         throw new Error(`Failed to read service account credentials: ${error.message}`);
     }
 
-    const now = Math.floor(Date.now() / 1000);
     const header = { alg: "RS256", typ: "JWT" };
     const payload = {
         iss: credentials.client_email,
@@ -88,8 +132,36 @@ async function getAccessToken() {
     }
 
     const tokenData = await tokenResponse.json();
-    console.log("[API Debug] Access token obtained successfully");
-    return tokenData.access_token;
+
+    // OPTIMIZATION 2: Cache the token
+    cachedAccessToken = tokenData.access_token;
+    tokenExpiryTime = now + (tokenData.expires_in || 3600);
+
+    console.log(`[API Debug] Access token obtained and cached (expires in ${tokenData.expires_in || 3600}s)`);
+    return cachedAccessToken;
+}
+
+// OPTIMIZATION 3: Retry logic with exponential backoff
+async function fetchWithRetry(url, options, maxRetries = 3) {
+    let lastError;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, options);
+            return response;
+        } catch (error) {
+            lastError = error;
+
+            // Don't retry on last attempt
+            if (attempt < maxRetries - 1) {
+                const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+                console.warn(`[Retry] Attempt ${attempt + 1} failed, retrying in ${backoffMs}ms...`, error.message);
+                await new Promise(resolve => setTimeout(resolve, backoffMs));
+            }
+        }
+    }
+
+    throw lastError;
 }
 
 // Helper: Check if input is a URL
@@ -98,13 +170,14 @@ function isUrl(input) {
     return input.startsWith('http://') || input.startsWith('https://') || input.startsWith('//');
 }
 
-// Helper: Fetch URL and convert to Base64
+// Helper: Fetch URL and convert to Base64 (with retry)
 async function urlToBase64(url) {
     try {
         const fullUrl = url.startsWith('//') ? `https:${url}` : url;
         console.log(`[API Debug] Fetching image from URL: ${fullUrl.substring(0, 80)}...`);
 
-        const response = await fetch(fullUrl);
+        // Use retry logic for external image fetching
+        const response = await fetchWithRetry(fullUrl, {}, 3);
         if (!response.ok) {
             throw new Error(`Failed to fetch image: ${response.status}`);
         }
@@ -348,6 +421,25 @@ export const action = async ({ request }) => {
 
         console.log(`[API Debug] Project: ${GOOGLE_CLOUD_PROJECT}, Shop: ${shop}`);
 
+        // OPTIMIZATION 5: Rate Limiting - Check before processing
+        const rateCheck = checkRateLimit(shop, 100, 60000);
+        if (!rateCheck.allowed) {
+            console.warn(`[Rate Limit] Shop ${shop} exceeded limit (${rateCheck.remaining} remaining)`);
+            return new Response(JSON.stringify({
+                error: "Rate limit exceeded. Too many requests.",
+                retryAfter: Math.ceil((rateCheck.resetTime - Date.now()) / 1000)
+            }), {
+                status: 429,
+                headers: {
+                    ...corsHeaders,
+                    'Retry-After': String(Math.ceil((rateCheck.resetTime - Date.now()) / 1000)),
+                    'X-RateLimit-Limit': '100',
+                    'X-RateLimit-Remaining': String(rateCheck.remaining),
+                    'X-RateLimit-Reset': String(Math.floor(rateCheck.resetTime / 1000))
+                }
+            });
+        }
+
         if (!GOOGLE_CLOUD_PROJECT || GOOGLE_CLOUD_PROJECT === 'your-gcp-project-id') {
             console.error("[API Debug] Invalid GOOGLE_CLOUD_PROJECT");
             return new Response(JSON.stringify({
@@ -398,9 +490,10 @@ export const action = async ({ request }) => {
             });
         }
 
-        const { userImage, garmentImage, garmentType, productId, productTitle } = body;
+        const { userImage, garmentImage, garmentType, productId, productTitle, sessionId, deviceType, fingerprintId } = body;
 
         // CHECK BILLING LIMITS
+        // Use atomic check if possible, but for now standard check is fine for limits
         const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
         if (billingInfo) {
             if (billingInfo.currentUsage >= billingInfo.usageLimit) {
@@ -424,12 +517,15 @@ export const action = async ({ request }) => {
         }
 
         console.log("[API Debug] Garment type:", garmentType || "auto-detect");
+        console.log(`[API Debug] Session: ${sessionId}, Device: ${deviceType}, FP: ${fingerprintId}`);
 
         console.log("[API Debug] Converting images...");
 
-        // Convert images to Base64
-        const personImageBase64 = await ensureBase64(userImage);
-        const productImageBase64 = await ensureBase64(garmentImage);
+        // OPTIMIZATION 1: Parallel image processing - 2x faster
+        const [personImageBase64, productImageBase64] = await Promise.all([
+            ensureBase64(userImage),
+            ensureBase64(garmentImage)
+        ]);
 
         if (!personImageBase64 || !productImageBase64) {
             console.error("[API Debug] Image conversion failed - empty result");
@@ -488,6 +584,13 @@ export const action = async ({ request }) => {
 
         const data = await response.json();
 
+        // Add detailed logging for debugging
+        console.log(`[API Debug] Response data structure:`, JSON.stringify({
+            hasPredictions: !!data.predictions,
+            predictionsLength: data.predictions?.length,
+            firstPrediction: data.predictions?.[0] ? Object.keys(data.predictions[0]) : null
+        }));
+
         if (!response.ok) {
             console.error("[API Debug] Vertex AI API Error:", JSON.stringify(data, null, 2));
             return new Response(JSON.stringify({
@@ -499,11 +602,12 @@ export const action = async ({ request }) => {
             });
         }
 
-        // Extract result image
+        // Extract result image with defensive checks
         const predictions = data.predictions;
-        if (!predictions || predictions.length === 0) {
+        if (!predictions || !Array.isArray(predictions) || predictions.length === 0) {
+            console.error("[API Debug] Invalid predictions array:", predictions);
             return new Response(JSON.stringify({
-                error: "No image generated by AI",
+                error: "No predictions returned by AI",
                 details: data
             }), {
                 status: 500,
@@ -511,75 +615,132 @@ export const action = async ({ request }) => {
             });
         }
 
-        const resultBase64 = predictions[0].bytesBase64Encoded;
-        const mimeType = predictions[0].mimeType || "image/png";
+        const firstPrediction = predictions[0];
+        if (!firstPrediction || typeof firstPrediction !== 'object') {
+            console.error("[API Debug] Invalid first prediction:", firstPrediction);
+            return new Response(JSON.stringify({
+                error: "Invalid prediction format",
+                details: data
+            }), {
+                status: 500,
+                headers: corsHeaders
+            });
+        }
+
+        // Check for RAI (Responsible AI) filter
+        if (firstPrediction.raiFilteredReason) {
+            console.warn("[API Debug] Content filtered by RAI:", firstPrediction.raiFilteredReason);
+            return new Response(JSON.stringify({
+                error: "Content filtered by safety policy",
+                message: "The image was filtered by Google's Responsible AI safety system. This may happen if the image contains inappropriate content, poor quality, or doesn't meet safety guidelines.",
+                raiReason: firstPrediction.raiFilteredReason,
+                suggestion: "Please try with a different image that shows a clear, full-body photo in appropriate clothing."
+            }), {
+                status: 400,
+                headers: corsHeaders
+            });
+        }
+
+        const resultBase64 = firstPrediction.bytesBase64Encoded;
+        if (!resultBase64 || typeof resultBase64 !== 'string') {
+            console.error("[API Debug] Missing or invalid bytesBase64Encoded:", {
+                hasField: 'bytesBase64Encoded' in firstPrediction,
+                type: typeof resultBase64,
+                availableFields: Object.keys(firstPrediction)
+            });
+            return new Response(JSON.stringify({
+                error: "AI response missing image data",
+                details: {
+                    message: "bytesBase64Encoded field not found in prediction",
+                    availableFields: Object.keys(firstPrediction)
+                }
+            }), {
+                status: 500,
+                headers: corsHeaders
+            });
+        }
+
+        const mimeType = firstPrediction.mimeType || "image/png";
 
         console.log(`[API Debug] Success! Generated image size: ${resultBase64.length} bytes`);
 
         // TRACK USAGE & PRODUCT STATS
+        // Using upserts and atomic updates to prevent race conditions
         try {
             const now = new Date();
             // Truncate to current hour (precision to hour)
             const currentHour = new Date(now);
             currentHour.setMinutes(0, 0, 0);
 
-            // 1. Increment Shop Usage (Hourly)
-            const usageStat = await prisma.usageStat.findUnique({
+            // 1. Record Detailed Event (Fine-grained tracking)
+            // Extract IP address (privacy-safe hashing)
+            const crypto = await import('crypto');
+            const ipAddress = request.headers.get("CF-Connecting-IP") ||
+                request.headers.get("X-Forwarded-For")?.split(',')[0]?.trim() ||
+                request.headers.get("X-Real-IP");
+            const ipHash = ipAddress
+                ? crypto.createHash('sha256').update(ipAddress + 'v-mirror-salt').digest('hex').substring(0, 16)
+                : null;
+
+            // Extract referer for traffic source attribution
+            const referer = request.headers.get("Referer") || null;
+
+            await prisma.tryOnEvent.create({
+                data: {
+                    shop,
+                    productId: String(productId || "unknown"),
+                    productTitle: productTitle || "Unknown Product",
+                    sessionId: sessionId || null,
+                    fingerprintId: fingerprintId || null,
+                    deviceType: deviceType || null,
+                    userAgent: request.headers.get("User-Agent") || null,
+                    ipHash: ipHash,
+                    referer: referer,
+                }
+            });
+
+            // 2. Increment Shop Usage (Hourly) - Using Upsert for Race Condition Safety
+            await prisma.usageStat.upsert({
                 where: {
                     shop_date: {
                         shop,
                         date: currentHour
                     }
+                },
+                update: { count: { increment: 1 } },
+                create: {
+                    shop,
+                    date: currentHour,
+                    count: 1
                 }
             });
 
-            if (usageStat) {
-                await prisma.usageStat.update({
-                    where: { id: usageStat.id },
-                    data: { count: { increment: 1 } }
-                });
-            } else {
-                await prisma.usageStat.create({
-                    data: {
-                        shop,
-                        date: currentHour,
-                        count: 1
-                    }
-                });
-            }
-
-            // 2. Increment Billing Info (Total Usage for Cycle)
+            // 3. Increment Billing Info (Total Usage for Cycle)
             await prisma.billingInfo.update({
                 where: { shop },
                 data: { currentUsage: { increment: 1 } }
             });
 
-            // 3. Increment Product Stats (Attribution)
+            // 4. Increment Product Stats (Attribution) - Using Upsert for Race Condition Safety
             if (productId && productTitle) {
                 const pId = String(productId);
-                const existingProduct = await prisma.productStat.findUnique({
-                    where: { shop_productId: { shop, productId: pId } }
+
+                await prisma.productStat.upsert({
+                    where: { shop_productId: { shop, productId: pId } },
+                    update: {
+                        tryOnCount: { increment: 1 },
+                        lastTryOn: new Date()
+                    },
+                    create: {
+                        shop,
+                        productId: pId,
+                        productTitle,
+                        productImage: garmentImage, // Store initial image as ref
+                        tryOnCount: 1,
+                        lastTryOn: new Date()
+                    }
                 });
 
-                if (existingProduct) {
-                    await prisma.productStat.update({
-                        where: { id: existingProduct.id },
-                        data: {
-                            tryOnCount: { increment: 1 },
-                            lastTryOn: new Date()
-                        }
-                    });
-                } else {
-                    await prisma.productStat.create({
-                        data: {
-                            shop,
-                            productId: pId,
-                            productTitle,
-                            productImage: garmentImage, // Store initial image as ref
-                            tryOnCount: 1
-                        }
-                    });
-                }
                 console.log(`[API Debug] Tracked stats for product: ${productTitle} (${pId})`);
             }
 

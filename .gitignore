@@ -48,3 +48,4 @@ pnpm-debug.log*
 ./public/generated/*
 /design
 gen-lang-client-*.json
+/统计目录/*

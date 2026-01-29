@@ -743,59 +743,235 @@
   .v-mirror-floating-widget {
     display: none;
   }
-  
+
   .v-mirror-floating-widget.show-mobile {
     display: flex;
   }
-  
+
   .v-mirror-trigger-btn {
     padding: 12px 20px;
     font-size: 14px;
   }
-  
+
   .v-mirror-tooltip {
     display: none;
   }
-  
+
+  /* Modal positioning - bottom sheet style */
   .v-mirror-modal-overlay {
     padding: 0;
     align-items: flex-end;
   }
-  
+
   .v-mirror-modal {
     max-width: 100%;
-    max-height: 95vh;
+    max-height: 92vh;
     border-radius: var(--v-mirror-radius) var(--v-mirror-radius) 0 0;
+    /* Add smooth slide-up animation */
+    animation: v-mirror-slide-up 0.3s ease-out !important;
   }
-  
+
   .v-mirror-modal-header {
     padding: 16px 20px;
+    /* Add touch-friendly close button */
   }
-  
+
   .v-mirror-modal-title {
     font-size: 18px;
   }
-  
+
+  .v-mirror-close-btn {
+    width: 36px;
+    height: 36px;
+    /* Larger touch target */
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .v-mirror-modal-content {
     padding: 20px;
+    /* Ensure proper scrolling */
+    -webkit-overflow-scrolling: touch;
   }
-  
+
+  /* Product section - reduce size on mobile */
   .v-mirror-product-image-container {
-    min-height: 200px;
-    padding: 16px;
+    min-height: 180px;
+    padding: 12px;
   }
-  
+
   .v-mirror-product-image {
+    max-height: 180px;
+  }
+
+  /* Upload area - larger touch target */
+  .v-mirror-upload-area {
+    min-height: 240px;
+    padding: 20px;
+    /* Make it more obvious it's tappable */
+  }
+
+  .v-mirror-upload-area:active {
+    background: var(--v-mirror-primary-light);
+    border-color: var(--v-mirror-primary);
+  }
+
+  /* Upload icon and text sizing */
+  .v-mirror-upload-icon {
+    width: 56px;
+    height: 56px;
+  }
+
+  .v-mirror-upload-title {
+    font-size: 16px;
+  }
+
+  .v-mirror-upload-subtitle {
+    font-size: 13px;
+  }
+
+  /* Browse button - larger touch target */
+  .v-mirror-browse-btn {
+    padding: 12px 24px;
+    font-size: 15px;
+    /* Ensure minimum touch target size */
+    min-height: 44px;
+    display: inline-flex;
+  }
+
+  /* File input - ensure proper mobile trigger */
+  .v-mirror-file-input {
+    display: none;
+    /* Important: prevent double-trigger issues */
+  }
+
+  /* Preview image */
+  .v-mirror-preview-image {
     max-height: 200px;
   }
-  
-  .v-mirror-upload-area {
-    min-height: 200px;
-    padding: 24px;
+
+  .v-mirror-change-photo-btn {
+    font-size: 15px;
+    padding: 8px 16px;
+    /* Larger touch target */
+    min-height: 44px;
   }
-  
+
+  /* Example models - larger on mobile */
+  .v-mirror-model-btn {
+    width: 70px;
+    height: 70px;
+  }
+
+  /* Modal footer - sticky at bottom */
+  .v-mirror-modal-footer {
+    padding: 16px 20px;
+    /* Ensure it stays visible */
+    background: white;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Generate button - full width and prominent */
+  .v-mirror-generate-btn {
+    padding: 14px 32px;
+    font-size: 15px;
+    /* Ensure minimum touch target */
+    min-height: 48px;
+  }
+
+  /* Result container - optimized for mobile */
   .v-mirror-comparison-container {
-    height: 350px;
+    height: auto;
+    min-height: 300px;
+    max-height: 400px;
+  }
+
+  .v-mirror-result-image {
+    max-height: 400px;
+  }
+
+  /* Action buttons - stack vertically on very small screens */
+  .v-mirror-action-buttons {
+    gap: 10px;
+  }
+
+  .v-mirror-action-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  /* Color selector - wrap better on mobile */
+  .v-mirror-color-options {
+    gap: 10px;
+  }
+
+  .v-mirror-color-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Extra small screens (< 375px) */
+@media (max-width: 374px) {
+  .v-mirror-modal {
+    max-height: 95vh;
+  }
+
+  .v-mirror-modal-content {
+    padding: 16px;
+  }
+
+  .v-mirror-upload-area {
+    min-height: 220px;
+    padding: 16px;
+  }
+
+  .v-mirror-product-image-container {
+    min-height: 160px;
+  }
+
+  .v-mirror-action-btn {
+    font-size: 13px;
+    padding: 10px 14px;
+  }
+}
+
+/* Landscape mode on mobile */
+@media (max-width: 767px) and (orientation: landscape) {
+  .v-mirror-modal {
+    max-height: 98vh;
+  }
+
+  .v-mirror-modal-content {
+    padding: 16px 20px;
+  }
+
+  .v-mirror-upload-area,
+  .v-mirror-product-image-container,
+  .v-mirror-comparison-container {
+    min-height: 180px;
+  }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 767px) {
+    /* Fix for iOS Safari bottom safe area */
+    .v-mirror-modal-footer {
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+
+    /* Prevent zoom on input focus */
+    .v-mirror-file-input {
+      font-size: 16px;
+    }
+
+    /* Fix for iOS modal height with address bar */
+    .v-mirror-modal {
+      max-height: 90vh;
+    }
   }
 }
 

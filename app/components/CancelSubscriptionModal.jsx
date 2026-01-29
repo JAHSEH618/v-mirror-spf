@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { X, AlertTriangle, Gift, Check, ChevronRight } from "lucide-react";
 import { useSubmit } from "react-router";
+import { useLanguage } from "./LanguageContext";
 
-// Styles
+// Styles - Using CSS variables for theme support
 const styles = {
     overlay: {
         position: 'fixed',
@@ -19,18 +20,18 @@ const styles = {
         padding: '16px'
     },
     modal: {
-        backgroundColor: 'white',
+        backgroundColor: 'var(--white)',
         borderRadius: '16px',
         maxWidth: '512px',
         width: '100%',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+        boxShadow: 'var(--shadow-md)',
         zIndex: 9999,
         position: 'relative',
         overflow: 'hidden'
     },
     header: {
         padding: '24px',
-        borderBottom: '1px solid #F3F4F6',
+        borderBottom: '1px solid var(--border-color)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
@@ -38,7 +39,7 @@ const styles = {
     title: {
         fontSize: '18px',
         fontWeight: 600,
-        color: '#111827',
+        color: 'var(--text-main)',
         margin: 0
     },
     content: {
@@ -46,8 +47,8 @@ const styles = {
     },
     footer: {
         padding: '24px',
-        backgroundColor: '#F9FAFB',
-        borderTop: '1px solid #F3F4F6',
+        backgroundColor: 'var(--bg-subtle)',
+        borderTop: '1px solid var(--border-color)',
         display: 'flex',
         justifyContent: 'flex-end',
         gap: '12px'
@@ -57,24 +58,27 @@ const styles = {
         alignItems: 'center',
         gap: '12px',
         padding: '12px',
-        border: '1px solid #E5E7EB',
+        border: '1px solid var(--border-color)',
         borderRadius: '8px',
         cursor: 'pointer',
-        transition: 'background-color 0.2s',
-        marginBottom: '8px'
+        transition: 'all 0.2s',
+        marginBottom: '8px',
+        backgroundColor: 'var(--white)'
     },
     activeRadio: {
-        borderColor: '#7C3AED',
-        backgroundColor: '#F3E8FF'
+        borderColor: 'var(--primary-color)',
+        backgroundColor: 'var(--p-100)'
     },
     textarea: {
         width: '100%',
         padding: '12px',
-        border: '1px solid #D1D5DB',
+        border: '1px solid var(--border-color)',
         borderRadius: '8px',
         marginTop: '12px',
         minHeight: '80px',
-        fontSize: '14px'
+        fontSize: '14px',
+        backgroundColor: 'var(--white)',
+        color: 'var(--text-main)'
     },
     button: {
         padding: '10px 16px',
@@ -85,15 +89,16 @@ const styles = {
         border: 'none',
         display: 'flex',
         alignItems: 'center',
-        gap: '8px'
+        gap: '8px',
+        transition: 'all 0.2s'
     },
     btnSecondary: {
-        backgroundColor: 'white',
-        border: '1px solid #D1D5DB',
-        color: '#374151'
+        backgroundColor: 'var(--white)',
+        border: '1px solid var(--border-color)',
+        color: 'var(--text-main)'
     },
     btnPrimary: {
-        backgroundColor: '#7C3AED',
+        backgroundColor: 'var(--primary-color)',
         color: 'white'
     },
     btnDanger: {
@@ -101,14 +106,15 @@ const styles = {
         color: 'white'
     },
     btnDisabled: {
-        backgroundColor: '#E5E7EB',
-        color: '#9CA3AF',
+        backgroundColor: 'var(--g-200)',
+        color: 'var(--g-400)',
         cursor: 'not-allowed'
     }
 };
 
 export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
     const submit = useSubmit();
+    const { t } = useLanguage();
     const [step, setStep] = useState(1);
     const [reason, setReason] = useState("");
     const [feedback, setFeedback] = useState("");
@@ -116,10 +122,11 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
     if (!isOpen) return null;
 
     const handleApplyDiscount = () => {
-        // Mock applying discount
-        alert("Discount applied! (Mock Action)");
+        submit(
+            { actionType: "applyDiscount" },
+            { method: "POST" }
+        );
         onClose();
-        // In real app: submit({ actionType: "applyDiscount" }, { method: "POST" });
     };
 
     const handleConfirmCancel = () => {
@@ -136,11 +143,11 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
     };
 
     const reasons = [
-        { id: "expensive", label: "Too expensive" },
-        { id: "not_using", label: "I'm not using it enough" },
-        { id: "missing_features", label: "Missing features" },
-        { id: "bugs", label: "Technical issues / Bugs" },
-        { id: "other", label: "Other" },
+        { id: "expensive", label: t('cancelSubscription.reasons.expensive') },
+        { id: "not_using", label: t('cancelSubscription.reasons.notUsing') },
+        { id: "missing_features", label: t('cancelSubscription.reasons.missingFeatures') },
+        { id: "bugs", label: t('cancelSubscription.reasons.bugs') },
+        { id: "other", label: t('cancelSubscription.reasons.other') },
     ];
 
     return (
@@ -150,11 +157,11 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                 {/* Header */}
                 <div style={styles.header}>
                     <h2 style={styles.title}>
-                        {step === 1 && "We're sorry to see you go"}
-                        {step === 2 && "Wait! Special Offer"}
-                        {step === 3 && "Final Confirmation"}
+                        {step === 1 && t('cancelSubscription.step1Title')}
+                        {step === 2 && t('cancelSubscription.step2Title')}
+                        {step === 3 && t('cancelSubscription.step3Title')}
                     </h2>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', opacity: 0.7, transition: 'opacity 0.2s' }} onMouseEnter={e => e.target.style.opacity = '1'} onMouseLeave={e => e.target.style.opacity = '0.7'}>
                         <X size={24} />
                     </button>
                 </div>
@@ -165,8 +172,8 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {/* Step 1: Feedback */}
                     {step === 1 && (
                         <div>
-                            <p style={{ color: '#4B5563', marginBottom: '16px' }}>
-                                Please tell us why you're cancelling. Your feedback helps us improve.
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                {t('cancelSubscription.step1Desc')}
                             </p>
 
                             <div>
@@ -186,14 +193,14 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                             onChange={(e) => setReason(e.target.value)}
                                             style={{ width: '16px', height: '16px', accentColor: '#7C3AED' }}
                                         />
-                                        <span style={{ color: reason === r.id ? '#5B21B6' : '#374151' }}>{r.label}</span>
+                                        <span style={{ color: reason === r.id ? 'var(--primary-hover)' : 'var(--text-main)' }}>{r.label}</span>
                                     </label>
                                 ))}
                             </div>
 
                             {reason && (
                                 <textarea
-                                    placeholder="Anything else you'd like to share?"
+                                    placeholder={t('cancelSubscription.feedbackPlaceholder')}
                                     value={feedback}
                                     onChange={(e) => setFeedback(e.target.value)}
                                     style={styles.textarea}
@@ -206,26 +213,26 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {step === 2 && (
                         <div style={{ textAlign: 'center' }}>
                             <div style={{
-                                width: '64px', height: '64px', backgroundColor: '#F3E8FF', borderRadius: '50%', margin: '0 auto 16px',
+                                width: '64px', height: '64px', backgroundColor: 'var(--p-100)', borderRadius: '50%', margin: '0 auto 16px',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center'
                             }}>
-                                <Gift size={32} color="#7C3AED" />
+                                <Gift size={32} color="var(--primary-color)" />
                             </div>
 
-                            <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
-                                Don't lose your progress!
+                            <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
+                                {t('cancelSubscription.step2DontLose')}
                             </h3>
 
-                            <p style={{ color: '#4B5563', marginBottom: '24px', lineHeight: 1.5 }}>
-                                We'd love to keep you as a customer. Here is a special <strong>20% discount</strong> for the next 3 months if you decide to stay.
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+                                {t('cancelSubscription.step2Offer')}
                             </p>
 
                             <div style={{
-                                backgroundColor: '#FAF5FF', border: '1px solid #F3E8FF', borderRadius: '12px', padding: '16px', marginBottom: '24px'
+                                backgroundColor: 'var(--p-50)', border: '1px solid var(--p-100)', borderRadius: '12px', padding: '16px', marginBottom: '24px'
                             }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#6D28D9', fontWeight: 500 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--primary-hover)', fontWeight: 500 }}>
                                     <Check size={20} />
-                                    Active Plan: Professional (20% OFF)
+                                    {t('cancelSubscription.step2OfferLabel')}
                                 </div>
                             </div>
                         </div>
@@ -240,8 +247,8 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                             }}>
                                 <AlertTriangle size={32} color="#DC2626" />
                             </div>
-                            <p style={{ color: '#4B5563', marginBottom: '24px' }}>
-                                Are you sure? Your subscription will be cancelled immediately and you will lose access to premium features.
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+                                {t('cancelSubscription.step3Confirm')}
                             </p>
                         </div>
                     )}
@@ -255,7 +262,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {step === 1 && (
                         <>
                             <button onClick={onClose} style={{ ...styles.button, ...styles.btnSecondary }}>
-                                Keep Subscription
+                                {t('cancelSubscription.keepSubscription')}
                             </button>
                             <button
                                 onClick={() => setStep(2)}
@@ -265,7 +272,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                     ...(!reason ? styles.btnDisabled : styles.btnPrimary)
                                 }}
                             >
-                                Continue
+                                {t('cancelSubscription.continue')}
                                 <ChevronRight size={16} />
                             </button>
                         </>
@@ -274,11 +281,11 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {/* Step 2 Actions */}
                     {step === 2 && (
                         <>
-                            <button onClick={() => setStep(3)} style={{ ...styles.button, background: 'none', color: '#6B7280' }}>
-                                No thanks, continue to cancel
+                            <button onClick={() => setStep(3)} style={{ ...styles.button, background: 'none', color: 'var(--text-secondary)' }}>
+                                {t('cancelSubscription.noThanks')}
                             </button>
                             <button onClick={handleApplyDiscount} style={{ ...styles.button, ...styles.btnPrimary }}>
-                                Apply Discount
+                                {t('cancelSubscription.applyDiscount')}
                             </button>
                         </>
                     )}
@@ -287,10 +294,10 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {step === 3 && (
                         <>
                             <button onClick={onClose} style={{ ...styles.button, ...styles.btnSecondary }}>
-                                Keep Subscription
+                                {t('cancelSubscription.keepSubscription')}
                             </button>
                             <button onClick={handleConfirmCancel} style={{ ...styles.button, ...styles.btnDanger }}>
-                                Confirm Cancellation
+                                {t('cancelSubscription.confirmCancel')}
                             </button>
                         </>
                     )}
@@ -300,3 +307,4 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
         </div>
     );
 };
+

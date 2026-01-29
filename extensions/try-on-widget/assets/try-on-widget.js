@@ -22,6 +22,128 @@
         lastError: null,
     };
 
+    // ============================================
+    // Localization
+    // ============================================
+    const translations = {
+        en: {
+            modalTitle: 'AI Virtual Try-On',
+            uploadInstructions: 'Upload a full-body photo for best results',
+            colorLabel: 'Color',
+            uploadTitle: 'Upload Your Photo',
+            uploadSubtitleOr: '— or choose a model below —',
+            browseFiles: 'Browse Files',
+            changePhoto: 'Change Photo',
+            quickTryLabel: 'Quick Try: Select a Model',
+            generating: 'Generating your try-on...',
+            waitText: 'This usually takes 10-15 seconds',
+            download: 'Download',
+            addToCart: 'Add to Cart',
+            share: 'Share',
+            tryAnother: 'Try Another Photo',
+            errorGeneric: 'Something went wrong. Please try again.',
+            retry: 'Retry',
+            generateBtn: '✨ Generate Try-On',
+            fileTypeErr: 'Please upload a JPG, PNG, or WebP image.',
+            fileSizeErr: 'File size must be less than 5MB.',
+            limitExceeded: 'Our virtual fitting room is currently at maximum capacity due to high demand. Please try again later!',
+            serverError: 'Server Error',
+            failedToGenerate: 'Failed to generate'
+        },
+        ja: {
+            modalTitle: 'AIバーチャル試着',
+            uploadInstructions: '全身写真をアップロードすると、より良い結果が得られます',
+            colorLabel: 'カラー',
+            uploadTitle: '写真をアップロード',
+            uploadSubtitleOr: '— または以下のモデルを選択 —',
+            browseFiles: 'ファイルを選択',
+            changePhoto: '写真を変更',
+            quickTryLabel: 'クイック試着: モデルを選択',
+            generating: '試着画像を生成中...',
+            waitText: '通常10〜15秒かかります',
+            download: 'ダウンロード',
+            addToCart: 'カートに追加',
+            share: '共有',
+            tryAnother: '別の写真で試す',
+            errorGeneric: 'エラーが発生しました。もう一度お試しください。',
+            retry: '再試行',
+            generateBtn: '✨ 試着を生成',
+            fileTypeErr: 'JPG, PNG, またはWebP画像をアップロードしてください。',
+            fileSizeErr: 'ファイルサイズは5MB未満にしてください。',
+            limitExceeded: '現在リクエストが集中しており、バーチャル試着室が満員です。しばらくしてからもう一度お試しください！',
+            serverError: 'サーバーエラー',
+            failedToGenerate: '生成に失敗しました'
+        },
+        zh: {
+            modalTitle: 'AI 虚拟试穿',
+            uploadInstructions: '上传全身照片以获得最佳效果',
+            colorLabel: '颜色',
+            uploadTitle: '上传您的照片',
+            uploadSubtitleOr: '— 或选择下方的模特 —',
+            browseFiles: '浏览文件',
+            changePhoto: '更换照片',
+            quickTryLabel: '快速试穿：选择模特',
+            generating: '正在生成试穿效果...',
+            waitText: '通常需要 10-15 秒',
+            download: '下载',
+            addToCart: '加入购物车',
+            share: '分享',
+            tryAnother: '尝试其他照片',
+            errorGeneric: '出错了，请重试。',
+            retry: '重试',
+            generateBtn: '✨ 生成试穿',
+            fileTypeErr: '请上传 JPG, PNG 或 WebP 格式的图片。',
+            fileSizeErr: '文件大小必须小于 5MB。',
+            limitExceeded: '由于需求量大，虚拟试衣间目前已满。请稍后再试！',
+            serverError: '服务器错误',
+            failedToGenerate: '生成失败'
+        },
+        es: {
+            modalTitle: 'Probador Virtual AI',
+            uploadInstructions: 'Sube una foto de cuerpo completo para obtener mejores resultados',
+            colorLabel: 'Color',
+            uploadTitle: 'Sube tu Foto',
+            uploadSubtitleOr: '— o elige un modelo abajo —',
+            browseFiles: 'Explorar Archivos',
+            changePhoto: 'Cambiar Foto',
+            quickTryLabel: 'Prueba Rápida: Elige un Modelo',
+            generating: 'Generando tu prueba...',
+            waitText: 'Esto suele tardar 10-15 segundos',
+            download: 'Descargar',
+            addToCart: 'Añadir al Carrito',
+            share: 'Compartir',
+            tryAnother: 'Probar Otra Foto',
+            errorGeneric: 'Algo salió mal. Por favor, inténtalo de nuevo.',
+            retry: 'Reintentar',
+            generateBtn: '✨ Generar Prueba',
+            fileTypeErr: 'Por favor sube una imagen JPG, PNG o WebP.',
+            fileSizeErr: 'El tamaño del archivo debe ser menor a 5MB.',
+            limitExceeded: '¡Nuestro probador virtual está a máxima capacidad debido a la alta demanda. Por favor intenta más tarde!',
+            serverError: 'Error del Servidor',
+            failedToGenerate: 'Fallo al generar'
+        }
+    };
+
+    function getLanguage() {
+        let lang = 'en';
+        if (window.Shopify && window.Shopify.locale) {
+            lang = window.Shopify.locale;
+        } else if (document.documentElement.lang) {
+            lang = document.documentElement.lang;
+        } else if (navigator.language) {
+            lang = navigator.language;
+        }
+
+        // Normalize
+        const code = lang.toLowerCase().split('-')[0];
+        return ['ja', 'zh', 'es'].includes(code) ? code : 'en';
+    }
+
+    function t(key, defaultText) {
+        const lang = getLanguage();
+        return translations[lang][key] || defaultText || translations['en'][key];
+    }
+
     // Example model images for quick try-on
     const exampleModels = [
         { id: 1, src: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=300&fit=crop', alt: 'Model 1' },
@@ -148,14 +270,36 @@
         // Do not reset state here to allow persistence
         if (!state.userPhoto) state.viewState = 'upload'; // Ensure valid initial state
         renderModal();
+
+        // Prevent background scrolling - better mobile support
         document.body.style.overflow = 'hidden';
+        // iOS Safari fix
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+
+        // Store scroll position for restoration
+        const scrollY = window.scrollY;
+        document.body.style.top = `-${scrollY}px`;
+        document.body.dataset.scrollY = scrollY;
     }
 
     function closeModal() {
         state.isModalOpen = false;
         // Don't clear pollInterval here so it can finish in background
         modalRoot.innerHTML = '';
+
+        // Restore scrolling - better mobile support
         document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.width = '';
+        document.body.style.top = '';
+
+        // Restore scroll position
+        const scrollY = document.body.dataset.scrollY;
+        if (scrollY) {
+            window.scrollTo(0, parseInt(scrollY));
+            delete document.body.dataset.scrollY;
+        }
     }
 
     // ============================================
@@ -188,7 +332,7 @@
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L13.09 8.26L18.18 6.82L14.73 11.09L20.39 13.27L14.03 14.21L16.5 20L12 15.82L7.5 20L9.97 14.21L3.61 13.27L9.27 11.09L5.82 6.82L10.91 8.26L12 2Z" fill="currentColor"/>
           </svg>
-          ${escapeHtml(config.modalTitle || 'AI Virtual Try-On')}
+          ${escapeHtml(config.modalTitle || t('modalTitle'))}
         </h2>
         <button class="v-mirror-close-btn" id="v-mirror-close" aria-label="Close modal">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -268,7 +412,7 @@
 
         return `
       <div class="v-mirror-color-selector">
-        <label class="v-mirror-color-label">Color: ${escapeHtml(state.selectedVariant?.option1 || colors[0].name)}</label>
+        <label class="v-mirror-color-label">${t('colorLabel')}: ${escapeHtml(state.selectedVariant?.option1 || colors[0].name)}</label>
         <div class="v-mirror-color-options">
           ${colors.map(color => `
             <button 
@@ -289,9 +433,9 @@
       <svg class="v-mirror-upload-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 5C13.66 5 15 6.34 15 8C15 9.66 13.66 11 12 11C10.34 11 9 9.66 9 8C9 6.34 10.34 5 12 5ZM12 19.2C9.5 19.2 7.29 17.92 6 15.98C6.03 13.99 10 12.9 12 12.9C13.99 12.9 17.97 13.99 18 15.98C16.71 17.92 14.5 19.2 12 19.2Z" fill="currentColor"/>
       </svg>
-      <h3 class="v-mirror-upload-title">Upload Your Photo</h3>
-      <p class="v-mirror-upload-subtitle">${escapeHtml(config.uploadInstructions || 'Upload a full-body photo for best results')}</p>
-      <p class="v-mirror-upload-subtitle">— or choose a model below —</p>
+      <h3 class="v-mirror-upload-title">${t('uploadTitle')}</h3>
+      <p class="v-mirror-upload-subtitle">${escapeHtml(config.uploadInstructions || t('uploadInstructions'))}</p>
+      <p class="v-mirror-upload-subtitle">${t('uploadSubtitleOr')}</p>
       <input type="file" id="v-mirror-file-input" class="v-mirror-file-input" accept="image/jpeg,image/png,image/webp" />
       <label for="v-mirror-file-input" class="v-mirror-browse-btn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -299,7 +443,7 @@
           <polyline points="17,8 12,3 7,8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Browse Files
+        ${t('browseFiles')}
       </label>
     `;
     }
@@ -309,7 +453,7 @@
       <div class="v-mirror-preview-container">
         <img src="${state.userPhoto}" alt="Your photo" class="v-mirror-preview-image" />
         <input type="file" id="v-mirror-reupload-input" class="v-mirror-file-input" accept="image/jpeg,image/png,image/webp" style="display:none" />
-        <button class="v-mirror-change-photo-btn" id="v-mirror-change-photo">Change Photo</button>
+        <button class="v-mirror-change-photo-btn" id="v-mirror-change-photo">${t('changePhoto')}</button>
       </div>
     `;
     }
@@ -317,7 +461,7 @@
     function renderExampleModels() {
         return `
       <div class="v-mirror-example-models">
-        <p class="v-mirror-example-label">Quick Try: Select a Model</p>
+        <p class="v-mirror-example-label">${t('quickTryLabel')}</p>
         <div class="v-mirror-model-options">
           ${exampleModels.map(model => `
             <button class="v-mirror-model-btn" data-model-src="${model.src}" aria-label="${model.alt}">
@@ -336,8 +480,8 @@
           <div class="v-mirror-spinner-ring"></div>
           <div class="v-mirror-spinner-ring v-mirror-spinner-ring-active"></div>
         </div>
-        <h3 class="v-mirror-loading-text">Generating your try-on...</h3>
-        <p class="v-mirror-loading-subtext">This usually takes 10-15 seconds</p>
+        <h3 class="v-mirror-loading-text">${t('generating')}</h3>
+        <p class="v-mirror-loading-subtext">${t('waitText')}</p>
       </div>
     `;
     }
@@ -355,7 +499,7 @@
               <polyline points="7,10 12,15 17,10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Download
+            ${t('download')}
           </button>
           <button class="v-mirror-action-btn primary" id="v-mirror-add-cart">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -363,9 +507,9 @@
               <circle cx="20" cy="21" r="1" fill="currentColor"/>
               <path d="M1 1H5L7.68 14.39C7.77 14.83 8.02 15.22 8.38 15.5C8.74 15.78 9.19 15.93 9.65 15.92H19.4C19.86 15.93 20.31 15.78 20.67 15.5C21.03 15.22 21.28 14.83 21.37 14.39L23 6H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Add to Cart
+            ${t('addToCart')}
           </button>
-          <button class="v-mirror-action-btn secondary icon-only" id="v-mirror-share" aria-label="Share">
+          <button class="v-mirror-action-btn secondary icon-only" id="v-mirror-share" aria-label="${t('share')}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="18" cy="5" r="3" stroke="currentColor" stroke-width="2"/>
               <circle cx="6" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
@@ -375,7 +519,7 @@
             </svg>
           </button>
           <button class="v-mirror-action-btn secondary" id="v-mirror-try-again">
-            Try Another Photo
+            ${t('tryAnother')}
           </button>
         </div>
       </div>
@@ -383,7 +527,7 @@
     }
 
     function renderErrorView() {
-        const errorText = state.lastError || "Something went wrong. Please try again.";
+        const errorText = state.lastError || t('errorGeneric');
         return `
       <div class="v-mirror-error">
         <svg class="v-mirror-error-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -391,7 +535,7 @@
           <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <p class="v-mirror-error-text" id="v-mirror-error-msg">${errorText}</p>
-        <button class="v-mirror-retry-btn" id="v-mirror-retry">Retry</button>
+        <button class="v-mirror-retry-btn" id="v-mirror-retry">${t('retry')}</button>
       </div>
     `;
     }
@@ -406,7 +550,7 @@
           id="v-mirror-generate"
           ${!state.userPhoto ? 'disabled' : ''}
         >
-          ✨ Generate Try-On
+          ${t('generateBtn')}
         </button>
       </div>
     `;
@@ -444,6 +588,8 @@
             uploadArea.addEventListener('dragover', handleDragOver);
             uploadArea.addEventListener('dragleave', handleDragLeave);
             uploadArea.addEventListener('drop', handleDrop);
+
+            // Mobile-optimized click handler
             uploadArea.addEventListener('click', (e) => {
                 // Prevent triggering input.click() if clicking on the label or input itself
                 // This fixes the issue where first click fails due to double-triggering
@@ -452,8 +598,27 @@
                     return;
                 }
                 const input = document.getElementById('v-mirror-file-input');
-                if (input) input.click();
+                if (input) {
+                    // Mobile: Add capture attribute for better camera access
+                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                    if (isMobile && !input.hasAttribute('capture')) {
+                        input.setAttribute('accept', 'image/*');
+                        // Don't force capture to allow gallery access too
+                    }
+                    input.click();
+                }
             });
+
+            // Add touch feedback for mobile
+            uploadArea.addEventListener('touchstart', (e) => {
+                if (!e.target.classList.contains('v-mirror-browse-btn')) {
+                    uploadArea.style.transform = 'scale(0.98)';
+                }
+            }, { passive: true });
+
+            uploadArea.addEventListener('touchend', () => {
+                uploadArea.style.transform = '';
+            }, { passive: true });
         }
 
 
@@ -569,14 +734,14 @@
         // Validate file type
         const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!validTypes.includes(file.type)) {
-            alert('Please upload a JPG, PNG, or WebP image.');
+            alert(t('fileTypeErr'));
             return;
         }
 
         // Validate file size (max 5MB)
         const maxSize = 5 * 1024 * 1024;
         if (file.size > maxSize) {
-            alert('File size must be less than 5MB.');
+            alert(t('fileSizeErr'));
             return;
         }
 
@@ -626,6 +791,69 @@
         });
     }
 
+    // Helper: Get or create persistent Session ID
+    function getSessionId() {
+        let sid = localStorage.getItem('v_mirror_sid');
+        if (!sid) {
+            sid = 'sess_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+            localStorage.setItem('v_mirror_sid', sid);
+        }
+        return sid;
+    }
+
+    // Helper: Detect device type
+    function getDeviceType() {
+        const ua = navigator.userAgent;
+        if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
+            return "tablet";
+        }
+        if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) {
+            return "mobile";
+        }
+        return "desktop";
+    }
+
+    // Helper: Simple Browser Fingerprint (Canvas + UA Hash)
+    // Generates a reasonably unique ID without external libraries
+    async function getFingerprint() {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const txt = 'browser-fingerprint-v1';
+            ctx.textBaseline = "top";
+            ctx.font = "14px 'Arial'";
+            ctx.fillStyle = "#f60";
+            ctx.fillRect(125, 1, 62, 20);
+            ctx.fillStyle = "#069";
+            ctx.fillText(txt, 2, 15);
+            ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+            ctx.fillText(txt, 4, 17);
+
+            const b64 = canvas.toDataURL().replace("data:image/png;base64,", "");
+            const bin = atob(b64);
+            let hash = 0;
+            for (let i = 0; i < bin.length; i++) {
+                hash = ((hash << 5) - hash) + bin.charCodeAt(i);
+                hash |= 0;
+            }
+
+            // Combine with UA and Screen resolution for better uniqueness
+            const rawId = hash + navigator.userAgent + screen.width + 'x' + screen.height + new Date().getTimezoneOffset();
+
+            // Simple hash of the string
+            let finalHash = 0;
+            for (let i = 0; i < rawId.length; i++) {
+                const char = rawId.charCodeAt(i);
+                finalHash = ((finalHash << 5) - finalHash) + char;
+                finalHash = finalHash & finalHash;
+            }
+
+            return 'fp_' + Math.abs(finalHash).toString(16);
+        } catch (e) {
+            return 'fp_error_' + Date.now();
+        }
+    }
+
     // ============================================
     // API Integration
     // ============================================
@@ -661,6 +889,11 @@
             // Start try-on generation
             console.log('[V-Mirror] Starting generation request...');
             console.log('[V-Mirror] Garment type:', config.garmentType || 'auto-detect');
+
+            const sessionId = getSessionId();
+            const deviceType = getDeviceType();
+            const fingerprintId = await getFingerprint();
+
             const startResponse = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
@@ -672,6 +905,9 @@
                     productId: config.productId,
                     productTitle: config.productTitle || 'Product',
                     garmentType: config.garmentType || null,
+                    sessionId: sessionId,
+                    deviceType: deviceType,
+                    fingerprintId: fingerprintId
                 }),
             });
 
@@ -680,16 +916,16 @@
                 responseData = await startResponse.json();
             } catch (e) {
                 // If not JSON, throw status error
-                if (!startResponse.ok) throw new Error(`Server Error: ${startResponse.status}`);
+                if (!startResponse.ok) throw new Error(`${t('serverError')}: ${startResponse.status}`);
             }
 
             console.log('[V-Mirror] API Response:', responseData);
 
             if (!startResponse.ok) {
                 if (responseData && responseData.code === 'LIMIT_EXCEEDED') {
-                    throw new Error('Our virtual fitting room is currently at maximum capacity due to high demand. Please try again later!');
+                    throw new Error(t('limitExceeded'));
                 }
-                throw new Error(responseData?.error || `Failed to generate: ${startResponse.status}`);
+                throw new Error(responseData?.error || `${t('failedToGenerate')}: ${startResponse.status}`);
             }
 
             if (responseData.error) {

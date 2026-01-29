@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { DashboardLayout } from "../components/DashboardLayout";
+import { useLanguage } from "../components/LanguageContext";
 import adminStyles from "../styles/admin.css?url";
 
 export const links = () => [
@@ -79,7 +80,8 @@ export default function Appearance() {
 
     const [settings, setSettings] = useState(initialSettings);
     const [isDirty, setIsDirty] = useState(false);
-    const [previewDevice, setPreviewDevice] = useState('desktop'); // 'desktop' or 'mobile'
+    const [previewDevice, setPreviewDevice] = useState('desktop');
+    const { t } = useLanguage();
 
     const isSaving = fetcher.state === "submitting" || fetcher.state === "loading";
     const saveSuccess = fetcher.data?.success;
@@ -140,19 +142,19 @@ export default function Appearance() {
                 {/* Header */}
                 <div className="page-header">
                     <div>
-                        <h1 className="page-title">Customize Appearance</h1>
-                        <p className="page-subtitle">Design your virtual try-on widget to match your brand identity.</p>
+                        <h1 className="page-title">{t('appearance.title')}</h1>
+                        <p className="page-subtitle">{t('appearance.subtitle')}</p>
                     </div>
                     <div className="header-actions">
                         <button className="btn btn-secondary" onClick={handleReset}>
-                            Reset Default
+                            {t('common.resetDefault')}
                         </button>
                         <button
                             className="btn btn-primary"
                             onClick={handleSave}
                             disabled={!isDirty || isSaving}
                         >
-                            {isSaving ? 'Saving...' : 'Save Changes'}
+                            {isSaving ? t('appearance.saving') : t('appearance.saveChanges')}
                         </button>
                     </div>
                 </div>
@@ -163,29 +165,34 @@ export default function Appearance() {
 
                         {/* 1. Layout & Position */}
                         <div className="settings-card">
-                            <h3 className="card-title">Placement</h3>
+                            <h3 className="card-title">{t('appearance.sections.position.title')}</h3>
 
                             <div className="form-group">
-                                <label className="form-label">Widget Position</label>
+                                <label className="form-label">{t('appearance.sections.position.placement')}</label>
                                 <div className="position-selector">
-                                    {['bottom-left', 'bottom-right'].map((pos) => (
-                                        <div
-                                            key={pos}
-                                            className={`position-option ${settings.position === pos ? 'active' : ''}`}
-                                            onClick={() => handleChange("position", pos)}
-                                        >
-                                            <div className={`mini-screen ${pos}`}>
-                                                <div className="mini-widget"></div>
+                                    {['bottom-left', 'bottom-right'].map((pos) => {
+                                        const positionLabel = pos === 'bottom-left'
+                                            ? t('appearance.sections.position.bottomLeft')
+                                            : t('appearance.sections.position.bottomRight');
+                                        return (
+                                            <div
+                                                key={pos}
+                                                className={`position-option ${settings.position === pos ? 'active' : ''}`}
+                                                onClick={() => handleChange("position", pos)}
+                                            >
+                                                <div className={`mini-screen ${pos}`}>
+                                                    <div className="mini-widget"></div>
+                                                </div>
+                                                <span>{positionLabel}</span>
                                             </div>
-                                            <span>{pos.replace('-', ' ')}</span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             <div className="form-group">
                                 <div className="range-header">
-                                    <label className="form-label">Horizontal Offset</label>
+                                    <label className="form-label">{t('appearance.sections.position.horizontalOffset')}</label>
                                     <span className="range-value">{settings.horizontalOffset}px</span>
                                 </div>
                                 <input
@@ -201,7 +208,7 @@ export default function Appearance() {
 
                             <div className="form-group">
                                 <div className="range-header">
-                                    <label className="form-label">Vertical Offset</label>
+                                    <label className="form-label">{t('appearance.sections.position.verticalOffset')}</label>
                                     <span className="range-value">{settings.verticalOffset}px</span>
                                 </div>
                                 <input
@@ -218,11 +225,11 @@ export default function Appearance() {
 
                         {/* 2. Brand & Colors */}
                         <div className="settings-card">
-                            <h3 className="card-title">Brand & Identity</h3>
+                            <h3 className="card-title">{t('appearance.sections.brand.title')}</h3>
 
                             <div className="form-row">
                                 <div className="form-group flex-1">
-                                    <label className="form-label">Primary Color</label>
+                                    <label className="form-label">{t('appearance.sections.brand.primaryColor')}</label>
                                     <div className="color-picker-wrapper">
                                         <input
                                             type="color"
@@ -240,7 +247,7 @@ export default function Appearance() {
                                     </div>
                                 </div>
                                 <div className="form-group flex-1">
-                                    <label className="form-label">Text Color</label>
+                                    <label className="form-label">{t('appearance.sections.brand.textColor')}</label>
                                     <div className="color-picker-wrapper">
                                         <input
                                             type="color"
@@ -260,7 +267,7 @@ export default function Appearance() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Widget Text</label>
+                                <label className="form-label">{t('appearance.sections.brand.widgetText')}</label>
                                 <input
                                     type="text"
                                     value={settings.buttonText}
@@ -271,7 +278,7 @@ export default function Appearance() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Modal Title</label>
+                                <label className="form-label">{t('appearance.sections.brand.modalTitle')}</label>
                                 <input
                                     type="text"
                                     value={settings.modalTitle}
@@ -284,11 +291,11 @@ export default function Appearance() {
 
                         {/* 3. Behavior */}
                         <div className="settings-card">
-                            <h3 className="card-title">Behavior</h3>
+                            <h3 className="card-title">{t('appearance.sections.behavior.title')}</h3>
                             <div className="toggle-row">
                                 <div className="toggle-info">
-                                    <span className="toggle-label">Mobile Display</span>
-                                    <span className="toggle-desc">Show widget on mobile devices</span>
+                                    <span className="toggle-label">{t('appearance.sections.behavior.showOnMobile')}</span>
+                                    <span className="toggle-desc">{t('appearance.sections.behavior.showOnMobileDesc')}</span>
                                 </div>
                                 <label className="toggle-switch">
                                     <input
@@ -302,8 +309,8 @@ export default function Appearance() {
 
                             <div className="toggle-row">
                                 <div className="toggle-info">
-                                    <span className="toggle-label">Smart Detection</span>
-                                    <span className="toggle-desc">Only show on 'Clothing' products</span>
+                                    <span className="toggle-label">{t('appearance.sections.behavior.smartDetection')}</span>
+                                    <span className="toggle-desc">{t('appearance.sections.behavior.smartDetectionDesc')}</span>
                                 </div>
                                 <label className="toggle-switch">
                                     <input
@@ -316,16 +323,16 @@ export default function Appearance() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Animation Style</label>
+                                <label className="form-label">{t('appearance.sections.behavior.animationStyle')}</label>
                                 <select
                                     className="styled-select"
                                     value={settings.animationStyle}
                                     onChange={(e) => handleChange("animationStyle", e.target.value)}
                                 >
-                                    <option value="fade-in">Fade In</option>
-                                    <option value="slide-up">Slide Up</option>
-                                    <option value="scale">Scale</option>
-                                    <option value="bounce">Bounce</option>
+                                    <option value="fade-in">{t('appearance.sections.behavior.fadeIn')}</option>
+                                    <option value="slide-up">{t('appearance.sections.behavior.slideUp')}</option>
+                                    <option value="scale">{t('appearance.sections.behavior.scale')}</option>
+                                    <option value="bounce">{t('appearance.sections.behavior.bounce')}</option>
                                 </select>
                             </div>
                         </div>
@@ -336,7 +343,7 @@ export default function Appearance() {
                         <div className="preview-sticky-container">
                             <div className="preview-toolbar">
                                 <div className="preview-title">
-                                    <span className="pulse-dot"></span> Live Preview
+                                    <span className="pulse-dot"></span> {t('appearance.preview.title')}
                                 </div>
                                 <div className="device-switcher">
                                     <button

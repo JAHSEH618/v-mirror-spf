@@ -1,7 +1,8 @@
-import { useLoaderData, useSubmit, useActionData, useSearchParams, useRevalidator } from "react-router";
-import { useState, useEffect } from "react";
+import { useLoaderData, useSubmit, useActionData, useSearchParams, useRevalidator, useNavigate } from "react-router";
+import { useState, useEffect, useMemo } from "react";
 import { authenticate, apiVersion } from "../shopify.server";
 import { DashboardLayout } from "../components/DashboardLayout";
+import { useLanguage } from "../components/LanguageContext";
 import prisma from "../db.server";
 import adminStyles from "../styles/admin.css?url";
 import {
@@ -28,63 +29,139 @@ const ENTERPRISE_PLAN = "Enterprise Plan";
 export const loader = async ({ request }) => {
     const { session, admin, billing } = await authenticate.admin(request);
     const shop = session.shop;
-    let isEmbedEnabled = false;
 
-    // 1. Check App Block Status
-    try {
-        const themesResponse = await admin.graphql(
-            `#graphql
-            query getThemes {
-                themes(first: 5, roles: MAIN) {
-                    nodes { id }
-                }
-            }`
-        );
-        const themesData = await themesResponse.json();
-        const mainThemeId = themesData.data?.themes?.nodes?.[0]?.id;
+    // === Fetch 30 days of data to support all time ranges client-side ===
+    // This eliminates server round-trips when switching time ranges
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-        if (mainThemeId) {
-            try {
-                const themeId = mainThemeId.split('/').pop();
-                const response = await fetch(
-                    `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
-                    { headers: { "X-Shopify-Access-Token": session.accessToken } }
-                );
-                const json = await response.json();
-                const asset = json.asset;
+    // === Parallel execution of database queries (fast) ===
+    // External API calls are moved to a race with timeout to prevent blocking
 
-                if (asset?.value) {
-                    const settingsData = JSON.parse(asset.value);
-                    const blocks = settingsData.current?.blocks || {};
-                    isEmbedEnabled = Object.values(blocks).some((block) => {
-                        return block.type.includes("try-on-widget") && String(block.disabled) !== "true";
-                    });
-                }
-            } catch (e) {
-                console.warn("REST Asset check failed:", e);
-            }
-        }
-    } catch (error) {
-        console.warn("Theme check failed:", error);
-    }
+    // Theme check with aggressive timeout (non-blocking for page load)
+    const checkAppBlockStatusWithTimeout = async () => {
+        const TIMEOUT_MS = 2000; // 2 second timeout - don't block page for too long
 
-    // 2. Check billing status with Shopify
-    let hasPayment = false;
-    try {
-        const billingCheck = await billing.check({
-            plans: [MONTHLY_PLAN, ENTERPRISE_PLAN],
-            isTest: true,
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve(null), TIMEOUT_MS); // Return null on timeout
         });
-        hasPayment = billingCheck.hasActivePayment;
-    } catch (e) {
-        // Ignore in dev
-    }
 
-    // 3. Get Billing Info
-    let billingInfo = await prisma.billingInfo.findUnique({
-        where: { shop },
-        include: { paymentMethods: true }
-    });
+        const checkPromise = (async () => {
+            try {
+                const themesResponse = await admin.graphql(
+                    `#graphql
+                    query getThemes {
+                        themes(first: 5, roles: MAIN) {
+                            nodes { id }
+                        }
+                    }`
+                );
+                const themesData = await themesResponse.json();
+                const mainThemeId = themesData.data?.themes?.nodes?.[0]?.id;
+
+                if (mainThemeId) {
+                    const themeId = mainThemeId.split('/').pop();
+                    const response = await fetch(
+                        `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
+                        { headers: { "X-Shopify-Access-Token": session.accessToken } }
+                    );
+                    const json = await response.json();
+                    const asset = json.asset;
+
+                    if (asset?.value) {
+                        const settingsData = JSON.parse(asset.value);
+                        const blocks = settingsData.current?.blocks || {};
+                        return Object.values(blocks).some((block) => {
+                            return block.type.includes("try-on-widget") && String(block.disabled) !== "true";
+                        });
+                    }
+                }
+            } catch (error) {
+                console.warn("Theme check failed:", error);
+            }
+            return false;
+        })();
+
+        // Race: whichever finishes first wins
+        const result = await Promise.race([checkPromise, timeoutPromise]);
+        return result === null ? false : result; // Default to false if timeout
+    };
+
+    // Billing check with timeout (less critical)
+    const checkBillingStatusWithTimeout = async () => {
+        const TIMEOUT_MS = 1500;
+
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve(false), TIMEOUT_MS);
+        });
+
+        const checkPromise = (async () => {
+            try {
+                const billingCheck = await billing.check({
+                    plans: [MONTHLY_PLAN, ENTERPRISE_PLAN],
+                    isTest: true,
+                });
+                return billingCheck.hasActivePayment;
+            } catch (e) {
+                return false;
+            }
+        })();
+
+        return Promise.race([checkPromise, timeoutPromise]);
+    };
+
+    // === Execute all queries in parallel with timeouts ===
+    const [
+        isEmbedEnabled,
+        hasPaymentResult,
+        billingInfoResult,
+        billingHistorySrc,
+        rawUsageStats, // Fetch 30 days of raw data for client-side filtering
+        productStats,
+        deviceStatsSrc,
+        uvStatsSrc
+    ] = await Promise.all([
+        // External API calls with timeouts (won't block page for too long)
+        checkAppBlockStatusWithTimeout(),
+        checkBillingStatusWithTimeout(),
+        // Database queries (all run in parallel - these are fast)
+        prisma.billingInfo.findUnique({
+            where: { shop },
+            include: { paymentMethods: true }
+        }),
+        prisma.billingHistory.findMany({
+            where: { shop },
+            orderBy: { date: 'desc' },
+            take: 5
+        }),
+        // Fetch 30 days of raw stats - client will filter by time range
+        prisma.usageStat.findMany({
+            where: { shop, date: { gte: thirtyDaysAgo } },
+            orderBy: { date: 'asc' }
+        }),
+        prisma.productStat.findMany({
+            where: { shop },
+            orderBy: { tryOnCount: 'desc' },
+            take: 5
+        }),
+        // Fetch Device Stats (Phase 2)
+        prisma.tryOnEvent.groupBy({
+            by: ['deviceType'],
+            where: { shop },
+            _count: { _all: true }
+        }),
+        // Fetch UV (Unique Visitors) count based on fingerprintId
+        prisma.tryOnEvent.groupBy({
+            by: ['fingerprintId'],
+            where: { shop, fingerprintId: { not: null } },
+            _count: { _all: true }
+        })
+    ]);
+
+    // === Process billing info (create if not exists) ===
+    let billingInfo = billingInfoResult;
+    let hasPayment = hasPaymentResult;
 
     if (!billingInfo) {
         billingInfo = await prisma.billingInfo.create({
@@ -101,13 +178,7 @@ export const loader = async ({ request }) => {
     const isPremium = billingInfo.planName === MONTHLY_PLAN || billingInfo.planName === ENTERPRISE_PLAN;
     hasPayment = hasPayment || isPremium;
 
-    // 4. Get Billing History
-    const billingHistorySrc = await prisma.billingHistory.findMany({
-        where: { shop },
-        orderBy: { date: 'desc' },
-        take: 5
-    });
-
+    // === Process billing history ===
     const billingHistory = billingHistorySrc.map(record => ({
         id: record.id,
         date: new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
@@ -116,134 +187,54 @@ export const loader = async ({ request }) => {
         status: record.status.toLowerCase(),
     }));
 
-    // Mock history logic removed
-    /*
-    if (billingHistory.length === 0 && hasPayment) {
-       // Removed to avoid confusion
-    }
-    */
+    // === Serialize raw usage stats for client-side processing ===
+    // This allows instant time range switching without server round-trips
+    const serializedUsageStats = rawUsageStats.map(stat => ({
+        date: stat.date.toISOString(),
+        count: stat.count
+    }));
 
-    // 5. Get Usage Statistics based on Time Range
-    const url = new URL(request.url);
-    const timeRange = url.searchParams.get("timeRange") || 'weekly'; // Default to Weekly
+    // Calculate weekly stats for quick stats display (default view)
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const weeklyStats = rawUsageStats.filter(s => new Date(s.date) >= oneWeekAgo);
+    const totalTryOns = weeklyStats.reduce((sum, stat) => sum + stat.count, 0);
 
-    let rangeDays = 30;
-    if (timeRange === 'daily') rangeDays = 1;
-    if (timeRange === 'weekly') rangeDays = 7;
-    if (timeRange === 'monthly') rangeDays = 30;
-
-    const endDate = new Date();
-    // Inclusive logic: end of current hour/day
-    const startDate = new Date();
-
-    if (timeRange === 'daily') {
-        // Last 24 hours
-        startDate.setHours(startDate.getHours() - 24);
-    } else {
-        // Last X days (start from midnight of X days ago)
-        startDate.setDate(startDate.getDate() - (rangeDays - 1));
-        startDate.setHours(0, 0, 0, 0);
-    }
-
-    const usageStats = await prisma.usageStat.findMany({
-        where: { shop, date: { gte: startDate } },
-        orderBy: { date: 'asc' }
+    // Previous week for comparison
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const prevWeekStats = rawUsageStats.filter(s => {
+        const d = new Date(s.date);
+        return d >= twoWeeksAgo && d < oneWeekAgo;
     });
-
-    // Calculate total
-    const totalTryOns = usageStats.reduce((sum, stat) => sum + stat.count, 0);
-
-    // Trend Logic
-    let filledTrend = [];
-
-    if (timeRange === 'daily') {
-        // --- DAILY VIEW: Hourly Data ---
-        // Create 24 slots for the last 24h
-        const now = new Date();
-        for (let i = 23; i >= 0; i--) {
-            const d = new Date(now);
-            d.setHours(d.getHours() - i);
-            d.setMinutes(0, 0, 0);
-
-            // Format: "14:00"
-            const label = d.getHours() + ":00";
-
-            // Find stats matching this hour (ignoring minute mismatches from older data if any)
-            const match = usageStats.find(s => {
-                const sDate = new Date(s.date);
-                return sDate.getFullYear() === d.getFullYear() &&
-                    sDate.getMonth() === d.getMonth() &&
-                    sDate.getDate() === d.getDate() &&
-                    sDate.getHours() === d.getHours();
-            });
-
-            filledTrend.push({ date: label, tryOns: match ? match.count : 0 });
-        }
-    } else {
-        // --- WEEKLY/MONTHLY VIEW: Daily Aggregation ---
-        // Map timestamps to "YYYY-MM-DD" buckets
-        const dailyMap = new Map();
-
-        usageStats.forEach(stat => {
-            const dateStr = new Date(stat.date).toISOString().split('T')[0];
-            const current = dailyMap.get(dateStr) || 0;
-            dailyMap.set(dateStr, current + stat.count);
-        });
-
-        // Fill buckets
-        for (let i = rangeDays - 1; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const dateStr = d.toISOString().split('T')[0];
-            filledTrend.push({
-                date: dateStr,
-                tryOns: dailyMap.get(dateStr) || 0
-            });
-        }
-    }
-
-    // Previous Period (Simple Comparison)
-    // For simplicity, just fetch prev period sum to calculating change
-    const prevStartDate = new Date(startDate);
-    if (timeRange === 'daily') {
-        prevStartDate.setHours(prevStartDate.getHours() - 24);
-    } else {
-        prevStartDate.setDate(prevStartDate.getDate() - rangeDays);
-    }
-
-    const previousUsageStats = await prisma.usageStat.findMany({
-        where: { shop, date: { gte: prevStartDate, lt: startDate } }
-    });
-    const previousTotalTryOns = previousUsageStats.reduce((sum, stat) => sum + stat.count, 0);
+    const previousTotalTryOns = prevWeekStats.reduce((sum, stat) => sum + stat.count, 0);
 
     const tryOnChange = previousTotalTryOns > 0
         ? ((totalTryOns - previousTotalTryOns) / previousTotalTryOns)
         : (totalTryOns > 0 ? 1 : 0);
 
-    // Usage trend for chart is filledTrend (renamed in return)
-    const usageTrend = filledTrend;
-
     const usagePercentage = Math.min(100, Math.round((billingInfo.currentUsage / billingInfo.usageLimit) * 100));
     const renewalDate = new Date(billingInfo.cycleStartDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // Real Popular Products Stats
-    const productStats = await prisma.productStat.findMany({
-        where: { shop },
-        orderBy: { tryOnCount: 'desc' },
-        take: 5
-    });
-
+    // === Process popular products ===
     const popularProducts = productStats.map(p => ({
         id: p.productId,
         name: p.productTitle,
         image: p.productImage,
         tryOns: p.tryOnCount,
-        // Conversion: Orders / TryOns
         conversion: p.tryOnCount > 0 ? (p.orderedCount / p.tryOnCount) : 0
     }));
 
-    // Calculate aggregated real stats
-    // const totalAddToCart = productStats.reduce((sum, p) => sum + p.addToCartCount, 0); // Deprecated for top-level stats
+    // === Process Device Stats ===
+    const deviceStats = deviceStatsSrc.map(d => ({
+        name: d.deviceType || 'unknown',
+        value: d._count._all
+    })).sort((a, b) => b.value - a.value);
+
+    // === Process UV Stats (Unique Visitors) ===
+    const uniqueVisitors = uvStatsSrc.length; // Count of unique fingerprintIds
+
+    // Calculate aggregated stats
     const totalOrders = productStats.reduce((sum, p) => sum + p.orderedCount, 0);
     const totalRevenue = productStats.reduce((sum, p) => sum + p.revenue, 0);
     const totalTryOnStats = productStats.reduce((sum, p) => sum + p.tryOnCount, 0);
@@ -277,14 +268,17 @@ export const loader = async ({ request }) => {
             limit: billingInfo.usageLimit,
             percentage: usagePercentage,
             planName: billingInfo.planName,
-            renewalDate: renewalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            renewalDate: renewalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            deviceStats: deviceStats
         },
         quickStats: {
             totalTryOns: { value: totalTryOns || billingInfo.currentUsage, change: tryOnChange },
+            uniqueVisitors: { value: uniqueVisitors, change: 0 },
             conversionRate: { value: conversionRate, change: conversionChange },
             revenueImpact: { value: revenueImpact, change: revenueChange }
         },
-        usageTrend: filledTrend,
+        // Send raw stats for client-side trend calculation (enables instant time range switching)
+        rawUsageStats: serializedUsageStats,
         popularProducts
     };
 };
@@ -367,6 +361,91 @@ export const action = async ({ request }) => {
         return { status: "card_removed" };
     }
 
+    // Apply retention discount - create a new subscription with 20% off for 3 months
+    if (actionType === "applyDiscount") {
+        const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
+        const currentPlan = billingInfo?.planName || MONTHLY_PLAN;
+
+        // Determine price based on current plan
+        const planPrice = currentPlan === ENTERPRISE_PLAN ? 199.00 : 49.00;
+        const discountedPlanName = currentPlan === ENTERPRISE_PLAN
+            ? "Enterprise Plan (20% Off)"
+            : "Professional Plan (20% Off)";
+
+        try {
+            // Cancel existing subscription first
+            const subscription = await billing.check({ plans: [MONTHLY_PLAN, ENTERPRISE_PLAN], isTest: true });
+            if (subscription.appSubscriptions?.[0]) {
+                await billing.cancel({
+                    subscriptionId: subscription.appSubscriptions[0].id,
+                    isTest: true,
+                    prorate: true,
+                });
+            }
+
+            // Create new subscription with discount using GraphQL
+            const { admin } = await authenticate.admin(request);
+            const response = await admin.graphql(
+                `#graphql
+                mutation AppSubscriptionCreate($name: String!, $lineItems: [AppSubscriptionLineItemInput!]!, $returnUrl: URL!, $test: Boolean) {
+                    appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test) {
+                        userErrors { field message }
+                        confirmationUrl
+                        appSubscription { id }
+                    }
+                }`,
+                {
+                    variables: {
+                        name: discountedPlanName,
+                        // eslint-disable-next-line no-undef
+                        returnUrl: `https://${session.shop}/admin/apps/${process.env.SHOPIFY_API_KEY}/app/dashboard`,
+                        test: true,
+                        lineItems: [{
+                            plan: {
+                                appRecurringPricingDetails: {
+                                    price: { amount: planPrice, currencyCode: "USD" },
+                                    interval: "EVERY_30_DAYS",
+                                    discount: {
+                                        value: { percentage: 0.2 },  // 20% off
+                                        durationLimitInIntervals: 3  // For 3 billing cycles
+                                    }
+                                }
+                            }
+                        }]
+                    }
+                }
+            );
+
+            const result = await response.json();
+
+            if (result.data?.appSubscriptionCreate?.confirmationUrl) {
+                // Redirect merchant to approve the discounted subscription
+                return {
+                    status: "discount_pending",
+                    confirmationUrl: result.data.appSubscriptionCreate.confirmationUrl
+                };
+            }
+
+            if (result.data?.appSubscriptionCreate?.userErrors?.length > 0) {
+                console.error("Discount subscription errors:", result.data.appSubscriptionCreate.userErrors);
+                throw new Error(result.data.appSubscriptionCreate.userErrors[0].message);
+            }
+
+            return { status: "discount_applied" };
+        } catch (error) {
+            console.error("Apply Discount Failed (Mocking Success for Dev):", error);
+            // eslint-disable-next-line no-undef
+            const isDev = process.env.NODE_ENV === "development";
+            const isShopOwnedError = error.message && error.message.includes("owned by a Shop");
+
+            if (isDev || isShopOwnedError) {
+                // Mock success in dev environment - just keep current plan
+                return { status: "mock_discount_applied", plan: currentPlan };
+            }
+            throw error;
+        }
+    }
+
     return null;
 };
 
@@ -380,7 +459,7 @@ export default function DashboardPage() {
         billingHistory,
         usage,
         quickStats,
-        usageTrend,
+        rawUsageStats, // Raw data for client-side trend calculation
         popularProducts
     } = useLoaderData();
 
@@ -388,8 +467,11 @@ export default function DashboardPage() {
     const submit = useSubmit();
     const [searchParams, setSearchParams] = useSearchParams();
     const revalidator = useRevalidator();
+    const navigate = useNavigate();
+    const { t } = useLanguage();
 
-    const timeRange = searchParams.get("timeRange") || 'weekly';
+    // Local time range state for instant switching (no server round-trip)
+    const [timeRange, setTimeRange] = useState('weekly');
     const [isCancelModalOpen, setCancelModalOpen] = useState(false);
     const [isUpgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
@@ -398,7 +480,74 @@ export default function DashboardPage() {
     const [downloadingId, setDownloadingId] = useState(null);
     const [hoveredIndex, setHoveredIndex] = useState(null);
 
-    // Check for charge_id to trigger verification
+    // === Client-side trend calculation (instant switching) ===
+    const usageTrend = useMemo(() => {
+        // Safety check: return empty array if no data
+        if (!rawUsageStats || !Array.isArray(rawUsageStats) || rawUsageStats.length === 0) {
+            return [];
+        }
+
+        const stats = rawUsageStats.map(s => ({ ...s, date: new Date(s.date) }));
+
+        if (timeRange === 'daily') {
+            // Hourly data for last 24 hours
+            const now = new Date();
+            const trend = [];
+            for (let i = 23; i >= 0; i--) {
+                const d = new Date(now);
+                d.setHours(d.getHours() - i);
+                d.setMinutes(0, 0, 0);
+
+                const label = d.getHours() + ":00";
+                const match = stats.find(s =>
+                    s.date.getFullYear() === d.getFullYear() &&
+                    s.date.getMonth() === d.getMonth() &&
+                    s.date.getDate() === d.getDate() &&
+                    s.date.getHours() === d.getHours()
+                );
+                trend.push({ date: label, tryOns: match ? match.count : 0 });
+            }
+            return trend;
+        } else {
+            // Daily aggregation for weekly/monthly
+            const rangeDays = timeRange === 'weekly' ? 7 : 30;
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - (rangeDays - 1));
+            startDate.setHours(0, 0, 0, 0);
+
+            const dailyMap = new Map();
+            stats.filter(s => s.date >= startDate).forEach(stat => {
+                const dateStr = stat.date.toISOString().split('T')[0];
+                const current = dailyMap.get(dateStr) || 0;
+                dailyMap.set(dateStr, current + stat.count);
+            });
+
+            const trend = [];
+            for (let i = rangeDays - 1; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const dateStr = d.toISOString().split('T')[0];
+                trend.push({
+                    date: dateStr,
+                    tryOns: dailyMap.get(dateStr) || 0
+                });
+            }
+            return trend;
+        }
+    }, [rawUsageStats, timeRange]);
+
+    // Helper to translate plan names from backend values
+    const translatePlanName = (planName) => {
+        const planMap = {
+            'Free Plan': t('subscription.plans.free.name'),
+            'Free Trial': t('subscription.plans.free.name'),
+            'Professional Plan': t('subscription.plans.professional.name'),
+            'Professional': t('subscription.plans.professional.name'),
+            'Enterprise': t('subscription.plans.enterprise.name'),
+            'Enterprise Plan': t('subscription.plans.enterprise.name'),
+        };
+        return planMap[planName] || planName;
+    };
     useEffect(() => {
         const chargeId = searchParams.get('charge_id');
         if (chargeId) {
@@ -424,6 +573,16 @@ export default function DashboardPage() {
         }
         if (actionData?.status === "cancelled") {
             alert("Subscription cancelled. Switched to Free Plan.");
+        }
+        if (actionData?.status === "discount_pending" && actionData?.confirmationUrl) {
+            // Redirect to Shopify confirmation page for discounted subscription
+            window.location.href = actionData.confirmationUrl;
+        }
+        if (actionData?.status === "mock_discount_applied") {
+            alert(`20% discount applied for next 3 months! (Dev Mock - ${actionData.plan})`);
+        }
+        if (actionData?.status === "discount_applied") {
+            alert("20% discount applied successfully for the next 3 billing cycles!");
         }
     }, [actionData]);
 
@@ -492,8 +651,8 @@ export default function DashboardPage() {
 
             <div className="welcome-banner">
                 <div>
-                    <h1 className="welcome-title">Welcome back, {storeName}! 👋</h1>
-                    <p className="welcome-subtitle">Here is what&apos;s happening with your store today.</p>
+                    <h1 className="welcome-title">{t('dashboard.welcomeTitle', { name: storeName })}</h1>
+                    <p className="welcome-subtitle">{t('dashboard.welcomeSubtitle')}</p>
                 </div>
                 {!isEmbedEnabled && (
                     <button
@@ -512,8 +671,8 @@ export default function DashboardPage() {
                 <div className="dashboard-col-left">
                     <div className="usage-card">
                         <div className="usage-card-header">
-                            <h2 className="card-title">Usage &amp; Billing</h2>
-                            <span className="period-badge">Monthly</span>
+                            <h2 className="card-title">{t('dashboard.usageBilling.title')}</h2>
+                            <span className="period-badge">{t('dashboard.usageBilling.monthly')}</span>
                         </div>
 
                         <div className="usage-content">
@@ -536,7 +695,7 @@ export default function DashboardPage() {
                                 </svg>
                                 <div className="ring-content">
                                     <span className={`ring-percentage ${usageStatus}`}>{usage.percentage}%</span>
-                                    <span className="ring-label">{usageStatus === 'exceeded' ? 'EXCEEDED' : 'USED'}</span>
+                                    <span className="ring-label">{usageStatus === 'exceeded' ? t('common.exceeded') : t('common.used')}</span>
                                 </div>
                             </div>
 
@@ -544,19 +703,19 @@ export default function DashboardPage() {
                             <div className="usage-details">
                                 <div className="usage-count">
                                     <span className="count-value">{usage.current}</span>
-                                    <span className="count-label">/ {usage.limit} try-ons</span>
+                                    <span className="count-label">/ {usage.limit} {t('dashboard.usageBilling.tryOns')}</span>
                                 </div>
                                 <div className="usage-remaining">
                                     <span className="remaining-dot"></span>
-                                    {usage.limit - usage.current} remaining
+                                    {usage.limit - usage.current} {t('dashboard.usageBilling.remaining')}
                                 </div>
                                 <div className="plan-info">
                                     <div className="plan-info-header">
-                                        <span className="plan-label">CURRENT PLAN</span>
-                                        <span className="plan-name">{usage.planName}</span>
+                                        <span className="plan-label">{t('dashboard.usageBilling.currentPlan')}</span>
+                                        <span className="plan-name">{translatePlanName(usage.planName)}</span>
                                     </div>
                                     <div className="plan-renewal">
-                                        {hasPayment ? <>Renews on <span>{usage.renewalDate}</span></> : "Free Trial"}
+                                        {hasPayment ? <>{t('dashboard.usageBilling.renewsOn')} <span>{usage.renewalDate}</span></> : t('common.freeTrial')}
                                     </div>
                                 </div>
                             </div>
@@ -565,11 +724,11 @@ export default function DashboardPage() {
                         {/* Action Buttons */}
                         <div className="usage-actions">
                             <button onClick={handleUpgrade} className="btn btn-primary">
-                                {hasPayment ? 'Change Plan' : 'Upgrade Plan'}
+                                {hasPayment ? t('dashboard.usageBilling.changePlan') : t('dashboard.usageBilling.changePlan')}
                             </button>
                             {hasPayment && (
                                 <button onClick={() => setCancelModalOpen(true)} className="btn btn-secondary">
-                                    Cancel
+                                    {t('cancelSubscription.cancel')}
                                 </button>
                             )}
                         </div>
@@ -580,7 +739,7 @@ export default function DashboardPage() {
                     {/* Payment & Billing History */}
                     <div className="products-card">
                         <div className="products-header">
-                            <h3 className="card-title">Billing</h3>
+                            <h3 className="card-title">{t('dashboard.billing.title')}</h3>
                             <div className="billing-actions">
                                 <a
                                     href={`https://${shop}/admin/settings/billing`}
@@ -590,56 +749,54 @@ export default function DashboardPage() {
                                     style={{ display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
                                 >
                                     <CreditCard size={14} />
-                                    Shopify Billing Settings
+                                    {t('dashboard.billing.shopifySettings')}
                                     <ExternalLink size={12} />
                                 </a>
                             </div>
                         </div>
 
                         {paymentMethod ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '0.5rem' }}>
-                                <div style={{ width: '40px', height: '28px', background: 'linear-gradient(135deg, #2563eb 0%, #60a5fa 100%)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                            <div className="payment-info-card">
+                                <div className="payment-brand-badge">
                                     {paymentMethod.brand}
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>•••• {paymentMethod.last4}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Expires {paymentMethod.expiry}</div>
+                                    <div className="payment-last4">•••• {paymentMethod.last4}</div>
+                                    <div className="payment-expiry">Expires {paymentMethod.expiry}</div>
                                 </div>
                             </div>
                         ) : hasPayment ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '0.5rem' }}>
-                                <div style={{ width: '40px', height: '28px', background: '#64748b', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                            <div className="payment-info-card">
+                                <div className="payment-generic-badge">
                                     <CreditCard size={16} />
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>Subscription Active</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Managed via Shopify Billing</div>
+                                    <div className="payment-status">{t('dashboard.billing.subscriptionActive')}</div>
+                                    <div className="payment-subtext">{t('dashboard.billing.managedVia')}</div>
                                 </div>
                             </div>
                         ) : null}
 
-                        <div className="billing-explainer" style={{ marginTop: '16px', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <div style={{ minWidth: '20px', color: '#6b7280' }}>
+                        <div className="billing-info-box">
+                            <div className="billing-info-content">
+                                <div className="billing-info-icon">
                                     <FileText size={20} />
                                 </div>
                                 <div>
-                                    <h4 style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 600, color: '#374151' }}>Invoices & Payments</h4>
-                                    <p style={{ margin: 0, fontSize: '13px', color: '#6b7280', lineHeight: '1.5' }}>
-                                        All charges for this app are consolidated into your monthly Shopify invoice.
-                                        You can view detailed payment history and download invoices directly from your <a href={`https://${shop.replace('https://', '')}/admin/settings/billing`} target="_blank" style={{ color: '#2563eb', textDecoration: 'underline' }}>Shopify Admin</a>.
+                                    <h4 className="billing-info-title">{t('dashboard.billing.invoicesTitle')}</h4>
+                                    <p className="billing-info-text">
+                                        {t('dashboard.billing.invoicesDesc')} <a href={`https://${shop.replace('https://', '')}/admin/settings/billing`} target="_blank" className="link-underline">{t('dashboard.billing.shopifyAdmin')}</a>.
                                     </p>
                                 </div>
                             </div>
                         </div>
 
-                        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: '0.5rem', paddingTop: '0.75rem', textAlign: 'center' }}>
+                        <div className="billing-footer">
                             <button
-                                className="view-all-btn"
-                                style={{ width: '100%', justifyContent: 'center' }}
+                                className="view-all-btn btn-block-link"
                                 onClick={() => window.open(`https://${shop.replace('https://', '')}/admin/settings/billing`, '_blank')}
                             >
-                                View All History
+                                {t('dashboard.billing.viewHistory')}
                             </button>
                         </div>
                     </div>
@@ -657,7 +814,18 @@ export default function DashboardPage() {
                                     {formatChange(quickStats.totalTryOns.change)}
                                 </span>
                             </div>
-                            <span className="stat-label">Total Try-Ons</span>
+                            <span className="stat-label">{t('dashboard.stats.totalTryOns')}</span>
+                        </div>
+
+                        <div className="stat-card">
+                            <div className="stat-header">
+                                <span className="stat-value">{quickStats.uniqueVisitors.value.toLocaleString()}</span>
+                                <span className={`stat-change ${quickStats.uniqueVisitors.change >= 0 ? 'positive' : 'negative'}`}>
+                                    {quickStats.uniqueVisitors.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {formatChange(quickStats.uniqueVisitors.change)}
+                                </span>
+                            </div>
+                            <span className="stat-label">{t('dashboard.stats.uniqueVisitors')}</span>
                         </div>
 
                         <div className="stat-card">
@@ -668,7 +836,7 @@ export default function DashboardPage() {
                                     {formatChange(quickStats.conversionRate.change)}
                                 </span>
                             </div>
-                            <span className="stat-label">Conversion Rate</span>
+                            <span className="stat-label">{t('dashboard.stats.conversionRate')}</span>
                         </div>
 
                         <div className="stat-card">
@@ -679,22 +847,27 @@ export default function DashboardPage() {
                                     {formatChange(quickStats.revenueImpact.change)}
                                 </span>
                             </div>
-                            <span className="stat-label">Revenue Impact</span>
+                            <span className="stat-label">{t('dashboard.stats.revenueImpact')}</span>
                         </div>
                     </div>
 
                     {/* Popular Products Table */}
                     <div className="products-card">
                         <div className="products-header">
-                            <h3 className="card-title">Popular Products</h3>
-                            <button className="view-all-btn">View All</button>
+                            <h3 className="card-title">{t('dashboard.products.title')}</h3>
+                            <button
+                                className="view-all-btn"
+                                onClick={() => navigate('/app/products')}
+                            >
+                                {t('dashboard.products.viewAll')}
+                            </button>
                         </div>
                         <table className="products-table">
                             <thead>
                                 <tr>
-                                    <th>Product</th>
-                                    <th>Try-Ons</th>
-                                    <th>Conversions</th>
+                                    <th>{t('dashboard.products.product')}</th>
+                                    <th>{t('dashboard.products.tryOns')}</th>
+                                    <th>{t('dashboard.products.conversions')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -706,8 +879,7 @@ export default function DashboardPage() {
                                                     <img
                                                         src={product.image}
                                                         alt={product.name}
-                                                        className="product-icon"
-                                                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
+                                                        className="product-img"
                                                     />
                                                 ) : (
                                                     <div className={`product-icon product-icon-${index % 4}`}>
@@ -740,20 +912,20 @@ export default function DashboardPage() {
             {/* Usage Trend Chart */}
             <div className="trend-card">
                 <div className="trend-header">
-                    <h3 className="card-title">Usage Trend</h3>
+                    <h3 className="card-title">{t('dashboard.trend.title')}</h3>
                     <div className="time-range-btns">
                         <button
                             className={`range-btn ${timeRange === 'daily' ? 'active' : ''}`}
-                            onClick={() => setSearchParams(prev => { prev.set('timeRange', 'daily'); return prev; })}
-                        >Daily</button>
+                            onClick={() => setTimeRange('daily')}
+                        >{t('dashboard.trend.daily')}</button>
                         <button
                             className={`range-btn ${timeRange === 'weekly' ? 'active' : ''}`}
-                            onClick={() => setSearchParams(prev => { prev.set('timeRange', 'weekly'); return prev; })}
-                        >Weekly</button>
+                            onClick={() => setTimeRange('weekly')}
+                        >{t('dashboard.trend.weekly')}</button>
                         <button
                             className={`range-btn ${timeRange === 'monthly' ? 'active' : ''}`}
-                            onClick={() => setSearchParams(prev => { prev.set('timeRange', 'monthly'); return prev; })}
-                        >Monthly</button>
+                            onClick={() => setTimeRange('monthly')}
+                        >{t('dashboard.trend.monthly')}</button>
                     </div>
                 </div>
 
@@ -769,7 +941,7 @@ export default function DashboardPage() {
                         {[0, 50, 100, 150, 200].map(y => (
                             <line key={y} x1="0" y1={y} x2={chartWidth} y2={y} className="grid-line" />
                         ))}
-                        <path d={areaPath} fill="url(#chartGradient)" />
+                        <path d={areaPath} fill="url(#chartGradient)" className="chart-area-path" />
                         <path d={linePath} className="chart-line-path" />
                     </svg>
 
@@ -857,7 +1029,7 @@ export default function DashboardPage() {
                                         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                                     }}>
                                         <div style={{ marginBottom: '2px', opacity: 0.8, fontSize: '10px' }}>{d.date}</div>
-                                        <div>{d.tryOns} Try-Ons</div>
+                                        <div>{d.tryOns} {t('dashboard.trend.tryOnsLabel')}</div>
                                     </div>
                                 </>
                             );
@@ -893,6 +1065,65 @@ export default function DashboardPage() {
                         })}
                     </div>
                 </div>
+            </div>
+
+            {/* Device Distribution Card (Phase 2) */}
+            <div className="trend-card device-distribution-card">
+                <div className="trend-header">
+                    <h3 className="card-title">{t('dashboard.deviceDistribution.title')}</h3>
+                </div>
+                <div className="device-stats-container">
+                    {usage.deviceStats && usage.deviceStats.length > 0 ? (
+                        usage.deviceStats.map(stat => (
+                            <div key={stat.name} className="device-stat-item">
+                                <div className="device-stat-label">
+                                    {stat.name === 'desktop' ? '🖥️ ' : stat.name === 'mobile' ? '📱 ' : stat.name === 'tablet' ? '📟 ' : '❓ '}
+                                    {t(`dashboard.deviceDistribution.${stat.name}`) || t('dashboard.deviceDistribution.unknown')}
+                                </div>
+                                <div className="device-stat-value">{stat.value}</div>
+                                <div className="device-stat-sublabel">{t('dashboard.deviceDistribution.tryOns')}</div>
+                            </div>
+                        ))
+                    ) : (
+                        <>
+                            {/* Empty State with Placeholders */}
+                            <div className="device-stat-item device-stat-placeholder">
+                                <div className="device-stat-label">
+                                    🖥️ {t('dashboard.deviceDistribution.desktop')}
+                                </div>
+                                <div className="device-stat-value device-stat-value-empty">-</div>
+                                <div className="device-stat-sublabel">{t('dashboard.deviceDistribution.tryOns')}</div>
+                            </div>
+                            <div className="device-stat-item device-stat-placeholder">
+                                <div className="device-stat-label">
+                                    📱 {t('dashboard.deviceDistribution.mobile')}
+                                </div>
+                                <div className="device-stat-value device-stat-value-empty">-</div>
+                                <div className="device-stat-sublabel">{t('dashboard.deviceDistribution.tryOns')}</div>
+                            </div>
+                            <div className="device-stat-item device-stat-placeholder">
+                                <div className="device-stat-label">
+                                    📟 {t('dashboard.deviceDistribution.tablet')}
+                                </div>
+                                <div className="device-stat-value device-stat-value-empty">-</div>
+                                <div className="device-stat-sublabel">{t('dashboard.deviceDistribution.tryOns')}</div>
+                            </div>
+                            <div className="device-stat-item device-stat-placeholder">
+                                <div className="device-stat-label">
+                                    ❓ {t('dashboard.deviceDistribution.unknown')}
+                                </div>
+                                <div className="device-stat-value device-stat-value-empty">-</div>
+                                <div className="device-stat-sublabel">{t('dashboard.deviceDistribution.tryOns')}</div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                {(!usage.deviceStats || usage.deviceStats.length === 0) && (
+                    <div className="device-stats-empty-banner">
+                        <Eye size={20} style={{ opacity: 0.5 }} />
+                        <span>{t('dashboard.deviceDistribution.noData')}</span>
+                    </div>
+                )}
             </div>
         </DashboardLayout>
     );

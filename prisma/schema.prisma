@@ -112,6 +112,8 @@ model BillingHistory {
   invoiceUrl         String?
   
   createdAt          DateTime @default(now())
+
+  @@index([shop, date]) // Performance: optimize history queries by shop and date
 }
 
 model UsageStat {
@@ -122,6 +124,7 @@ model UsageStat {
   count              Int      @default(0)     // Usage count for this day
   
   @@unique([shop, date]) // One record per shop per day (ideally truncate date to day)
+  @@index([shop, date])  // Performance: optimize time-range queries
 }
 
 model ProductStat {
@@ -140,4 +143,33 @@ model ProductStat {
   updatedAt      DateTime @updatedAt
 
   @@unique([shop, productId])
+  @@index([shop, tryOnCount]) // Performance: optimize Top N product queries
+}
+
+// Fine-grained event tracking for user/device analytics
+model TryOnEvent {
+  id            String   @id @default(uuid())
+  shop          String
+  productId     String
+  productTitle  String?
+  
+  // User/Device identification
+  sessionId     String?  // Browser session identifier (localStorage UUID)
+  fingerprintId String?  // Browser fingerprint ID
+  deviceType    String?  // "mobile" | "desktop" | "tablet"
+  userAgent     String?  // Full user agent string for analysis
+  
+  // Request metadata
+  ipHash        String?  // Hashed IP for privacy-safe geo analysis
+  referer       String?  // Where the user came from
+  
+  // Result
+  success       Boolean  @default(true)
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([shop, productId])
+  @@index([shop, createdAt])
+  @@index([sessionId])
+  @@index([shop, deviceType])
 }

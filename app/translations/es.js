@@ -1,0 +1,255 @@
+// Spanish translations (Español)
+export const es = {
+    // Common
+    common: {
+        save: "Guardar Cambios",
+        cancel: "Cancelar",
+        loading: "Cargando...",
+        success: "Éxito",
+        error: "Error",
+        viewAll: "Ver Todo",
+        learnMore: "Más Información",
+        used: "USADO",
+        exceeded: "EXCEDIDO",
+        freeTrial: "Prueba Gratuita",
+        daily: "Diario",
+        weekly: "Semanal",
+        monthly: "Mensual",
+        resetDefault: "Restablecer",
+        perMonth: "/mes",
+        back: "Volver",
+    },
+
+    // Navigation
+    nav: {
+        home: "Inicio",
+        dashboard: "Panel de Control",
+        appearance: "Apariencia",
+    },
+
+    // Onboarding Page
+    onboarding: {
+        title: "Bienvenido a Probador Virtual",
+        subtitle: "Estás a solo unos pasos de transformar la experiencia de tus clientes.",
+        step1: {
+            label: "Paso 1",
+            title: "Instalación de la App",
+            desc: "La aplicación se ha instalado correctamente en tu tienda.",
+        },
+        step2: {
+            label: "Paso 2",
+            title: "Activar Bloque de App",
+            descEnabled: "El widget está activo en tu tema.",
+            descDisabled: "Activa el bloque 'Probador Virtual' en el editor de temas para hacerlo visible.",
+            action: "Abrir Editor de Temas",
+        },
+        step3: {
+            label: "Paso 3",
+            title: "Vista Previa y Lanzar",
+            desc: "Revisa las páginas de productos para ver la magia en acción.",
+            action: "Visitar Tienda",
+        },
+        status: {
+            completed: "Completado",
+            actionRequired: "Acción Requerida",
+            nextStep: "Siguiente Paso",
+        },
+        support: {
+            title: "¿Necesitas ayuda?",
+            docs: "Leer Documentación",
+            contact: "Contactar Soporte",
+        },
+    },
+
+    // Dashboard Page
+    dashboard: {
+        welcomeTitle: "Bienvenido de nuevo, {name} 👋",
+        welcomeSubtitle: "Esto es lo que está pasando en tu tienda hoy.",
+        viewGuide: "Ver Guía de Instalación",
+        usageBilling: {
+            title: "Uso y Facturación",
+            monthly: "Mensual",
+            tryOns: "pruebas",
+            remaining: "restantes",
+            currentPlan: "PLAN ACTUAL",
+            renewsOn: "Se renueva el",
+            changePlan: "Cambiar Plan",
+            upgradePlan: "Mejorar Plan",
+        },
+        stats: {
+            totalTryOns: "Total de Pruebas",
+            uniqueVisitors: "Visitantes Únicos",
+            conversionRate: "Tasa de Conversión",
+            revenueImpact: "Impacto en Ingresos",
+        },
+        products: {
+            title: "Productos Populares",
+            viewAll: "Ver Todo",
+            product: "Producto",
+            tryOns: "Pruebas",
+            conversions: "Conversiones",
+            noProducts: "Sin datos de productos aún",
+        },
+        trend: {
+            title: "Tendencia de Uso",
+            daily: "Diario",
+            weekly: "Semanal",
+            monthly: "Mensual",
+            tryOnsLabel: "Pruebas",
+        },
+        deviceDistribution: {
+            title: "Distribución de Dispositivos",
+            desktop: "Escritorio",
+            mobile: "Móvil",
+            tablet: "Tableta",
+            unknown: "Desconocido",
+            tryOns: "Pruebas",
+            noData: "No hay datos de dispositivos aún. Las pruebas aparecerán aquí.",
+        },
+        billing: {
+            title: "Facturación",
+            shopifySettings: "Configuración de Facturación Shopify",
+            subscriptionActive: "Suscripción Activa",
+            managedVia: "Gestionado via Facturación Shopify",
+            invoicesTitle: "Facturas y Pagos",
+            invoicesDesc: "Todos los cargos de esta app se consolidan en tu factura mensual de Shopify. Puedes ver el historial de pagos y descargar facturas desde tu",
+            shopifyAdmin: "Panel de Shopify",
+            viewHistory: "Ver Todo el Historial",
+            expires: "Expira",
+        },
+    },
+
+    // Subscription Modal
+    subscription: {
+        title: "Gestionar Suscripción",
+        subtitle: "Elige el plan que se adapte a tus necesidades. Actualiza o degrada en cualquier momento.",
+        mostPopular: "Más Popular",
+        currentPlan: "Plan Actual",
+        upgrade: "Mejorar",
+        downgrade: "Degradar",
+        selectPlan: "Seleccionar Plan",
+        footer: "Todos los planes incluyen 14 días de prueba gratuita. Cancela en cualquier momento.",
+        confirmDowngrade: "¿Estás seguro de querer degradar a {plan}? Se perderán los beneficios.",
+        plans: {
+            free: {
+                name: "Prueba Gratuita",
+                desc: "Perfecto para probar y uso personal.",
+                features: {
+                    tryOns: "10 Pruebas / mes",
+                    speed: "Velocidad Estándar",
+                    support: "Soporte Comunitario",
+                    catalog: "Catálogo Básico",
+                },
+            },
+            professional: {
+                name: "Plan Profesional",
+                desc: "Para negocios en crecimiento que necesitan potencia y flexibilidad.",
+                features: {
+                    tryOns: "Pruebas Ilimitadas",
+                    processing: "Procesamiento Prioritario",
+                    support: "Soporte por Email",
+                    analytics: "Análisis Avanzado",
+                    branding: "Marca Personalizada",
+                },
+            },
+            enterprise: {
+                name: "Empresarial",
+                desc: "Solución completa para comerciantes de alto volumen.",
+                features: {
+                    api: "Acceso API Dedicado",
+                    support: "Soporte Telefónico 24/7",
+                    integration: "Integración Personalizada",
+                    sla: "Garantía SLA",
+                    manager: "Gerente de Éxito Dedicado",
+                },
+            },
+        },
+    },
+
+    // Cancel Subscription Modal
+    cancelSubscription: {
+        cancel: "Cancelar",
+        step1Title: "Lamentamos verte ir",
+        step1Desc: "Por favor, cuéntanos por qué cancelas. Tu feedback nos ayuda a mejorar.",
+        step2Title: "¡Espera! Oferta Especial",
+        step3Title: "Confirmación Final",
+        reasons: {
+            expensive: "Demasiado caro",
+            notUsing: "No lo uso lo suficiente",
+            missingFeatures: "Faltan funciones",
+            bugs: "Problemas técnicos / Errores",
+            other: "Otro",
+        },
+        feedbackPlaceholder: "¿Algo más que quieras compartir?",
+        step2Offer: "Nos encantaría mantenerte como cliente. Aquí tienes un descuento especial del 20% durante los próximos 3 meses si decides quedarte.",
+        step2OfferLabel: "Plan Activo: Profesional (20% DESCUENTO)",
+        step2DontLose: "¡No pierdas tu progreso!",
+        step3Confirm: "¿Estás seguro? Tu suscripción se cancelará inmediatamente y perderás acceso a las funciones premium.",
+        keepSubscription: "Mantener Suscripción",
+        continue: "Continuar",
+        noThanks: "No gracias, continuar cancelando",
+        applyDiscount: "Aplicar Descuento",
+        confirmCancel: "Confirmar Cancelación",
+    },
+
+    // Appearance Page
+    appearance: {
+        title: "Personalizar Apariencia",
+        subtitle: "Diseña tu widget de probador virtual para que coincida con tu identidad de marca.",
+        saveChanges: "Guardar Cambios",
+        saving: "Guardando...",
+        sections: {
+            position: {
+                title: "UBICACIÓN",
+                placement: "Posición del Widget",
+                bottomLeft: "inferior izquierda",
+                bottomRight: "inferior derecha",
+                horizontalOffset: "Desplazamiento Horizontal",
+                verticalOffset: "Desplazamiento Vertical",
+            },
+            brand: {
+                title: "MARCA E IDENTIDAD",
+                primaryColor: "Color Primario",
+                textColor: "Color de Texto",
+                widgetText: "Texto del Widget",
+                modalTitle: "Título del Modal",
+            },
+            behavior: {
+                title: "COMPORTAMIENTO",
+                smartDetection: "Detección Inteligente",
+                smartDetectionDesc: "Mostrar solo en páginas de productos de ropa",
+                showOnMobile: "Mostrar en Móvil",
+                showOnMobileDesc: "Mostrar widget en dispositivos móviles",
+                animationStyle: "Estilo de Animación",
+                fadeIn: "Fundido",
+                slideUp: "Deslizar Arriba",
+                scale: "Escalar",
+                bounce: "Rebotar",
+            },
+        },
+        preview: {
+            title: "Vista Previa en Vivo",
+            desktop: "Escritorio",
+            mobile: "Móvil",
+        },
+    },
+
+    // Products Analytics Page
+    products: {
+        title: "Análisis de Productos",
+        allProducts: "Todos los Productos",
+        totalTryOns: "Total de Pruebas",
+        totalAddToCarts: "Añadidos al Carrito",
+        totalOrders: "Pedidos",
+        totalRevenue: "Impacto en Ingresos",
+        product: "Producto",
+        tryOns: "Pruebas",
+        addToCarts: "Al Carrito",
+        orders: "Pedidos",
+        revenue: "Ingresos",
+        conversion: "Conversión",
+        lastTryOn: "Última Prueba",
+        emptyTitle: "Sin datos de productos aún",
+        emptyText: "Las análisis de productos aparecerán aquí después de que los clientes usen la función de prueba.",
+    },
+};

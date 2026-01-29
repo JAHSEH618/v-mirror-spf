@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { X, Check, Star, Zap, Shield } from "lucide-react";
+import { useLanguage } from "./LanguageContext";
 
-// Inline Styles
+// Inline Styles - Using CSS variables for theme support
 const styles = {
     overlay: {
         position: 'fixed',
@@ -18,12 +18,12 @@ const styles = {
         padding: '16px'
     },
     modal: {
-        backgroundColor: 'white',
+        backgroundColor: 'var(--white)',
         borderRadius: '16px',
         maxWidth: '1000px',
         width: '100%',
         maxHeight: '90vh',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        boxShadow: 'var(--shadow-md)',
         zIndex: 9999,
         position: 'relative',
         display: 'flex',
@@ -38,11 +38,11 @@ const styles = {
     title: {
         fontSize: '24px',
         fontWeight: 700,
-        color: '#111827',
+        color: 'var(--text-main)',
         marginBottom: '8px'
     },
     subtitle: {
-        color: '#6B7280',
+        color: 'var(--text-secondary)',
         fontSize: '16px'
     },
     closeBtn: {
@@ -52,7 +52,9 @@ const styles = {
         background: 'none',
         border: 'none',
         cursor: 'pointer',
-        color: '#9CA3AF'
+        color: 'var(--text-secondary)',
+        opacity: 0.7,
+        transition: 'opacity 0.2s'
     },
     grid: {
         display: 'grid',
@@ -62,25 +64,25 @@ const styles = {
         overflowY: 'auto'
     },
     card: {
-        border: '1px solid #E5E7EB',
+        border: '1px solid var(--border-color)',
         borderRadius: '12px',
         padding: '24px',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
-        backgroundColor: 'white',
+        backgroundColor: 'var(--white)',
         transition: 'all 0.2s'
     },
     cardFeatured: {
-        border: '2px solid #7C3AED',
-        boxShadow: '0 10px 15px -3px rgba(124, 58, 237, 0.1)'
+        border: '2px solid var(--primary-color)',
+        boxShadow: '0 10px 15px -3px rgba(124, 58, 237, 0.2)'
     },
     badge: {
         position: 'absolute',
         top: '-12px',
         left: '50%',
         transform: 'translateX(-50%)',
-        backgroundColor: '#7C3AED',
+        backgroundColor: 'var(--primary-color)',
         color: 'white',
         padding: '4px 12px',
         borderRadius: '99px',
@@ -92,23 +94,23 @@ const styles = {
     planName: {
         fontSize: '18px',
         fontWeight: 600,
-        color: '#111827',
+        color: 'var(--text-main)',
         marginBottom: '8px'
     },
     price: {
         fontSize: '36px',
         fontWeight: 700,
-        color: '#111827',
+        color: 'var(--text-main)',
         marginBottom: '4px'
     },
     period: {
         fontSize: '14px',
-        color: '#6B7280',
+        color: 'var(--text-secondary)',
         fontWeight: 400
     },
     desc: {
         fontSize: '14px',
-        color: '#4B5563',
+        color: 'var(--text-secondary)',
         marginBottom: '24px',
         minHeight: '40px'
     },
@@ -123,7 +125,7 @@ const styles = {
         alignItems: 'center',
         gap: '12px',
         fontSize: '14px',
-        color: '#374151',
+        color: 'var(--text-main)',
         marginBottom: '12px'
     },
     button: {
@@ -134,78 +136,80 @@ const styles = {
         fontSize: '14px',
         cursor: 'pointer',
         border: 'none',
-        transition: 'background-color 0.2s'
+        transition: 'all 0.2s'
     },
     btnPrimary: {
-        backgroundColor: '#7C3AED',
+        backgroundColor: 'var(--primary-color)',
         color: 'white',
     },
     btnOutline: {
-        backgroundColor: 'white',
-        border: '1px solid #D1D5DB',
-        color: '#374151'
+        backgroundColor: 'var(--white)',
+        border: '1px solid var(--border-color)',
+        color: 'var(--text-main)'
     },
     btnCurrent: {
-        backgroundColor: '#F3F4F6',
-        color: '#9CA3AF',
+        backgroundColor: 'var(--g-100)',
+        color: 'var(--g-400)',
         cursor: 'default'
     }
 };
 
 export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }) => {
+    const { t } = useLanguage();
+
     if (!isOpen) return null;
 
     const plans = [
         {
             id: "free",
-            name: "Free Trial",
+            name: t('subscription.plans.free.name'),
             price: "$0",
             priceNum: 0,
-            desc: "Perfect for testing the waters and personal use.",
+            desc: t('subscription.plans.free.desc'),
             features: [
-                "10 Try-Ons / month",
-                "Standard Speed",
-                "Community Support",
-                "Basic Catalog"
+                t('subscription.plans.free.features.tryOns'),
+                t('subscription.plans.free.features.speed'),
+                t('subscription.plans.free.features.support'),
+                t('subscription.plans.free.features.catalog')
             ],
-            icon: <Star size={24} color="#6B7280" />
+            icon: <Star size={24} style={{ color: 'var(--text-secondary)' }} />
         },
         {
             id: "professional",
-            name: "Professional Plan",
+            name: t('subscription.plans.professional.name'),
             price: "$49",
             priceNum: 49,
-            desc: "For growing businesses that need power and flexibility.",
+            desc: t('subscription.plans.professional.desc'),
             features: [
-                "Unlimited Try-Ons",
-                "High-Priority Processing",
-                "Email Support",
-                "Advanced Analytics",
-                "Custom Branding"
+                t('subscription.plans.professional.features.tryOns'),
+                t('subscription.plans.professional.features.processing'),
+                t('subscription.plans.professional.features.support'),
+                t('subscription.plans.professional.features.analytics'),
+                t('subscription.plans.professional.features.branding')
             ],
             featured: true,
-            icon: <Zap size={24} color="#7C3AED" />
+            icon: <Zap size={24} style={{ color: 'var(--primary-color)' }} />
         },
         {
             id: "enterprise",
-            name: "Enterprise",
+            name: t('subscription.plans.enterprise.name'),
             price: "$199",
             priceNum: 199,
-            desc: "Full-scale solution for high volume merchants.",
+            desc: t('subscription.plans.enterprise.desc'),
             features: [
-                "Dedicated API Access",
-                "24/7 Phone Support",
-                "Custom Integration",
-                "SLA Guarantee",
-                "Dedicated Success Manager"
+                t('subscription.plans.enterprise.features.api'),
+                t('subscription.plans.enterprise.features.support'),
+                t('subscription.plans.enterprise.features.integration'),
+                t('subscription.plans.enterprise.features.sla'),
+                t('subscription.plans.enterprise.features.manager')
             ],
-            icon: <Shield size={24} color="#111827" />
+            icon: <Shield size={24} style={{ color: 'var(--text-main)' }} />
         }
     ];
 
     // Helper to find current price index
     // Treat "Free Plan" (backend) same as "Free Trial" (frontend)
-    const normalizedCurrentName = currentPlanName === "Free Plan" ? "Free Trial" : currentPlanName;
+    const normalizedCurrentName = currentPlanName === "Free Plan" ? t('subscription.plans.free.name') : currentPlanName;
     const currentPlanObj = plans.find(p => p.name === normalizedCurrentName) || plans[0];
     const currentPrice = currentPlanObj.priceNum;
 
@@ -213,13 +217,13 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
         <div style={styles.overlay} onClick={onClose}>
             <div style={styles.modal} onClick={e => e.stopPropagation()}>
 
-                <button style={styles.closeBtn} onClick={onClose}>
+                <button style={styles.closeBtn} onClick={onClose} onMouseEnter={e => e.target.style.opacity = '1'} onMouseLeave={e => e.target.style.opacity = '0.7'}>
                     <X size={24} />
                 </button>
 
                 <div style={styles.header}>
-                    <h2 style={styles.title}>Manage Subscription</h2>
-                    <p style={styles.subtitle}>Choose the plan that fits your needs. Upgrade or downgrade anytime.</p>
+                    <h2 style={styles.title}>{t('subscription.title')}</h2>
+                    <p style={styles.subtitle}>{t('subscription.subtitle')}</p>
                 </div>
 
                 <div style={styles.grid}>
@@ -227,13 +231,13 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                         const isCurrent = normalizedCurrentName === plan.name;
                         const isFeatured = plan.featured;
 
-                        let btnText = "Select Plan";
+                        let btnText = t('subscription.selectPlan');
                         if (isCurrent) {
-                            btnText = "Current Plan";
+                            btnText = t('subscription.currentPlan');
                         } else {
-                            if (plan.priceNum > currentPrice) btnText = "Upgrade";
-                            else if (plan.priceNum < currentPrice) btnText = "Downgrade";
-                            else btnText = "Select";
+                            if (plan.priceNum > currentPrice) btnText = t('subscription.upgrade');
+                            else if (plan.priceNum < currentPrice) btnText = t('subscription.downgrade');
+                            else btnText = t('subscription.selectPlan');
                         }
 
                         return (
@@ -245,7 +249,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                                 }}
                             >
                                 {isFeatured && (
-                                    <div style={styles.badge}>Most Popular</div>
+                                    <div style={styles.badge}>{t('subscription.mostPopular')}</div>
                                 )}
 
                                 <div style={{ marginBottom: '16px' }}>
@@ -254,14 +258,14 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
 
                                 <h3 style={styles.planName}>{plan.name}</h3>
                                 <div style={styles.price}>
-                                    {plan.price}<span style={styles.period}>/month</span>
+                                    {plan.price}<span style={styles.period}>{t('common.perMonth')}</span>
                                 </div>
                                 <p style={styles.desc}>{plan.desc}</p>
 
                                 <ul style={styles.features}>
                                     {plan.features.map((f, i) => (
                                         <li key={i} style={styles.featureItem}>
-                                            <Check size={16} color={isFeatured ? "#7C3AED" : "#9CA3AF"} />
+                                            <Check size={16} style={{ color: isFeatured ? 'var(--primary-color)' : 'var(--g-400)', flexShrink: 0 }} />
                                             {f}
                                         </li>
                                     ))}
@@ -272,7 +276,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                                     onClick={() => {
                                         if (!isCurrent) {
                                             if (plan.priceNum < currentPrice) {
-                                                if (confirm(`Are you sure you want to downgrade to ${plan.name}? Benefits will be lost.`)) {
+                                                if (confirm(t('subscription.confirmDowngrade', { plan: plan.name }))) {
                                                     onUpgrade(plan.id);
                                                     onClose();
                                                 }
@@ -294,9 +298,9 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                     })}
                 </div>
 
-                <div style={{ textAlign: 'center', padding: '24px', backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}>
-                    <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>
-                        All plans include a 14-day free trial. Cancel anytime.
+                <div style={{ textAlign: 'center', padding: '24px', backgroundColor: 'var(--bg-subtle)', borderTop: '1px solid var(--border-color)' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                        {t('subscription.footer')}
                     </p>
                 </div>
 
@@ -304,3 +308,4 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
         </div>
     );
 };
+
