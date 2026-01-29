@@ -20,6 +20,11 @@
         taskId: null,
         pollInterval: null,
         lastError: null,
+        isLightboxOpen: false, // For image zoom preview
+        loadingProgress: 0, // For loading progress indicator
+        uploadTaskId: null, // CDN upload task ID for polling
+        cdnPollInterval: null, // Interval for CDN URL polling
+        cdnUrl: null, // Final CDN URL after background upload
     };
 
     // ============================================
@@ -183,9 +188,10 @@
 
         // Bind events
         bindEvents();
-
-        console.log('[V-Mirror] Widget initialized');
     }
+
+
+
 
     // Apply settings dynamically (called when API settings are loaded)
     function applySettings(settings) {
@@ -229,9 +235,10 @@
 
         // Update config for modal usage
         Object.assign(config, settings);
-
-        console.log('[V-Mirror] Settings applied:', settings);
     }
+
+
+
 
     // Expose for external access
     window.VMirrorWidget = {
@@ -285,7 +292,21 @@
 
     function closeModal() {
         state.isModalOpen = false;
+        state.isLightboxOpen = false;
+
+        // Cleanup object URL to prevent memory leaks
+        if (state.resultImage && state.resultImage.startsWith('blob:')) {
+            URL.revokeObjectURL(state.resultImage);
+            state.resultImage = null; // Clear reference
+        }
+
         // Don't clear pollInterval here so it can finish in background
+        // But DO clear CDN polling if user closes modal
+        if (state.cdnPollInterval) {
+            clearInterval(state.cdnPollInterval);
+            state.cdnPollInterval = null;
+        }
+
         modalRoot.innerHTML = '';
 
         // Restore scrolling - better mobile support
@@ -302,11 +323,27 @@
         }
     }
 
+    // Close lightbox only (not the main modal)
+    function closeLightbox() {
+        state.isLightboxOpen = false;
+        renderModal();
+    }
+
     // ============================================
     // Modal Rendering
     // ============================================
     function renderModal() {
         if (!state.isModalOpen) return;
+
+        // OPTIMIZATION: Exclusive Lightbox Mode
+        // If lightbox is open, render ONLY the lightbox directly into the root
+        // This hides the main modal completely
+        if (state.isLightboxOpen) {
+            modalRoot.innerHTML = renderLightbox();
+            bindModalEvents();
+            return;
+        }
+
         const animationClass = `animation-${config.animationStyle || 'fade-in'}`;
 
         modalRoot.innerHTML = `
@@ -474,23 +511,73 @@
     }
 
     function renderLoadingView() {
+        // Calculate progress text based on state
+        const progressText = state.loadingProgress > 0
+            ? `${state.loadingProgress}%`
+            : '';
+        const progressStage = getLoadingStage(state.loadingProgress);
+
         return `
       <div class="v-mirror-loading">
         <div class="v-mirror-spinner">
           <div class="v-mirror-spinner-ring"></div>
           <div class="v-mirror-spinner-ring v-mirror-spinner-ring-active"></div>
+          ${progressText ? `<span class="v-mirror-progress-text">${progressText}</span>` : ''}
         </div>
         <h3 class="v-mirror-loading-text">${t('generating')}</h3>
-        <p class="v-mirror-loading-subtext">${t('waitText')}</p>
+        <p class="v-mirror-loading-subtext">${progressStage || t('waitText')}</p>
+        <div class="v-mirror-progress-bar">
+          <div class="v-mirror-progress-fill" style="width: ${state.loadingProgress}%"></div>
+        </div>
       </div>
     `;
+    }
+
+    // Get loading stage text based on progress
+    function getLoadingStage(progress) {
+        if (progress < 20) return t('waitText');
+        if (progress < 40) return getLanguage() === 'zh' ? '正在分析图片...' :
+            getLanguage() === 'ja' ? '画像を分析中...' : 'Analyzing images...';
+        if (progress < 60) return getLanguage() === 'zh' ? '正在生成试穿效果...' :
+            getLanguage() === 'ja' ? '試着効果を生成中...' : 'Generating try-on...';
+        if (progress < 80) return getLanguage() === 'zh' ? '正在优化结果...' :
+            getLanguage() === 'ja' ? '結果を最適化中...' : 'Optimizing result...';
+        return getLanguage() === 'zh' ? '即将完成...' :
+            getLanguage() === 'ja' ? 'もうすぐ完了...' : 'Almost done...';
+    }
+
+    // Simulate progress for better UX during loading
+    function startLoadingProgress() {
+        state.loadingProgress = 0;
+        const progressInterval = setInterval(() => {
+            if (state.viewState !== 'loading') {
+                clearInterval(progressInterval);
+                return;
+            }
+            // Gradually increase but slow down as it approaches 90%
+            if (state.loadingProgress < 90) {
+                const increment = state.loadingProgress < 30 ? 8 :
+                    state.loadingProgress < 60 ? 4 : 2;
+                state.loadingProgress = Math.min(90, state.loadingProgress + increment);
+                renderModal();
+            }
+        }, 500);
+        return progressInterval;
     }
 
     function renderResultView() {
         return `
       <div class="v-mirror-result">
         <div class="v-mirror-comparison-container">
-          <img src="${state.resultImage}" alt="Try-on result" class="v-mirror-result-image" />
+          <img src="${state.resultImage}" alt="Try-on result" class="v-mirror-result-image" id="v-mirror-result-img" title="Click to zoom" style="cursor: zoom-in;" />
+          <div class="v-mirror-zoom-hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+              <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M11 8V14M8 11H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Click to zoom
+          </div>
         </div>
         <div class="v-mirror-action-buttons">
           <button class="v-mirror-action-btn secondary" id="v-mirror-download">
@@ -521,6 +608,34 @@
           <button class="v-mirror-action-btn secondary" id="v-mirror-try-again">
             ${t('tryAnother')}
           </button>
+        </div>
+      </div>
+    `;
+    }
+
+    // Lightbox for full-screen image preview
+    function renderLightbox() {
+        if (!state.isLightboxOpen || !state.resultImage) return '';
+        return `
+      <div class="v-mirror-lightbox" id="v-mirror-lightbox">
+        <div class="v-mirror-lightbox-backdrop" id="v-mirror-lightbox-close"></div>
+        <div class="v-mirror-lightbox-content">
+          <img src="${state.resultImage}" alt="Try-on result (full size)" class="v-mirror-lightbox-image" />
+          <button class="v-mirror-lightbox-close-btn" id="v-mirror-lightbox-close-btn" aria-label="Close preview">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="v-mirror-lightbox-actions">
+            <button class="v-mirror-lightbox-action-btn" id="v-mirror-lightbox-download">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 15V19C21 20.1 20.1 21 19 21H5C3.9 21 3 20.1 3 19V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="7,10 12,15 17,10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              ${t('download')}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -684,11 +799,42 @@
         const tryAgainBtn = document.getElementById('v-mirror-try-again');
         if (tryAgainBtn) {
             tryAgainBtn.addEventListener('click', () => {
+                // Cleanup object URL
+                if (state.resultImage && state.resultImage.startsWith('blob:')) {
+                    URL.revokeObjectURL(state.resultImage);
+                }
+
                 state.userPhoto = null;
                 state.resultImage = null;
                 state.viewState = 'upload';
+                state.loadingProgress = 0;
                 renderModal();
             });
+        }
+
+        // Result image click to open lightbox
+        const resultImg = document.getElementById('v-mirror-result-img');
+        if (resultImg) {
+            resultImg.addEventListener('click', () => {
+                state.isLightboxOpen = true;
+                renderModal();
+            });
+        }
+
+        // Lightbox close handlers
+        const lightboxClose = document.getElementById('v-mirror-lightbox-close');
+        const lightboxCloseBtn = document.getElementById('v-mirror-lightbox-close-btn');
+        if (lightboxClose) {
+            lightboxClose.addEventListener('click', closeLightbox);
+        }
+        if (lightboxCloseBtn) {
+            lightboxCloseBtn.addEventListener('click', closeLightbox);
+        }
+
+        // Lightbox download button
+        const lightboxDownload = document.getElementById('v-mirror-lightbox-download');
+        if (lightboxDownload) {
+            lightboxDownload.addEventListener('click', handleDownload);
         }
 
         // Retry button
@@ -890,33 +1036,109 @@
             console.log('[V-Mirror] Starting generation request...');
             console.log('[V-Mirror] Garment type:', config.garmentType || 'auto-detect');
 
+            // Performance tracking
+            const perfStart = performance.now();
+            console.log('[V-Mirror PERF] ⏱️ Request started at:', new Date().toISOString());
+
             const sessionId = getSessionId();
             const deviceType = getDeviceType();
             const fingerprintId = await getFingerprint();
 
+            // FormData for efficient binary upload (fixes 40s upload latency)
+            const formData = new FormData();
+
+            // Convert Base64/DataURL to Blob for upload
+            const dataURItoBlob = (dataURI) => {
+                const byteString = atob(dataURI.split(',')[1]);
+                const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                return new Blob([ab], { type: mimeString });
+            };
+
+            if (state.userPhoto && state.userPhoto.startsWith('data:')) {
+                const blob = dataURItoBlob(state.userPhoto);
+                formData.append('userImage', blob, 'user-image.jpg');
+            } else {
+                formData.append('userImage', state.userPhoto);
+            }
+
+            formData.append('garmentImage', productImage);
+            formData.append('productId', config.productId);
+            formData.append('productTitle', config.productTitle || 'Product');
+            if (config.garmentType) formData.append('garmentType', config.garmentType);
+            formData.append('sessionId', sessionId);
+            if (deviceType) formData.append('deviceType', deviceType);
+            if (fingerprintId) formData.append('fingerprintId', fingerprintId);
+
             const startResponse = await fetch(apiUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    userImage: state.userPhoto,
-                    garmentImage: productImage,
-                    productId: config.productId,
-                    productTitle: config.productTitle || 'Product',
-                    garmentType: config.garmentType || null,
-                    sessionId: sessionId,
-                    deviceType: deviceType,
-                    fingerprintId: fingerprintId
-                }),
+                // Content-Type header excluded so browser sets boundary for multipart/form-data
+                body: formData,
             });
 
+            const fetchTime = performance.now();
+            console.log(`[V-Mirror PERF] 🌐 Network fetch completed in: ${(fetchTime - perfStart).toFixed(0)}ms`);
+            console.log('[V-Mirror PERF] ⏱️ Response received at:', new Date().toISOString());
+
+            // Check server response time
+            const serverTime = startResponse.headers.get('x-response-time');
+            if (serverTime) {
+                console.log('[V-Mirror PERF] 📡 Server timestamp:', serverTime);
+            }
+
+            // FAST TRACK: Check if response is a binary image stream
+            const contentType = startResponse.headers.get('content-type');
+            console.log(`[V-Mirror] Content-Type: ${contentType}`);
+
+            if (contentType && contentType.includes('image/')) {
+                console.log('[V-Mirror] Received binary stream (Fast Track)');
+                const blobStartTime = performance.now();
+
+                const blob = await startResponse.blob();
+                const blobTime = performance.now();
+                console.log(`[V-Mirror PERF] 💾 Blob created in: ${(blobTime - blobStartTime).toFixed(0)}ms, size: ${blob.size} bytes`);
+
+                const objectUrl = URL.createObjectURL(blob);
+                const urlTime = performance.now();
+                console.log(`[V-Mirror PERF] 🔗 Object URL created in: ${(urlTime - blobTime).toFixed(0)}ms`);
+
+                // Cleanup previous object URL to avoid memory leaks
+                if (state.resultImage && state.resultImage.startsWith('blob:')) {
+                    URL.revokeObjectURL(state.resultImage);
+                }
+
+                state.resultImage = objectUrl;
+                state.viewState = 'result';
+
+                console.log(`[V-Mirror PERF] ✅ TOTAL TIME: ${(performance.now() - perfStart).toFixed(0)}ms`);
+                console.log('[V-Mirror PERF] ⏱️ Rendering started at:', new Date().toISOString());
+
+                renderModal();
+
+                const renderTime = performance.now();
+                console.log(`[V-Mirror PERF] 🎨 Modal rendered in: ${(renderTime - urlTime).toFixed(0)}ms`);
+                console.log(`[V-Mirror PERF] 🏁 END-TO-END TOTAL: ${(renderTime - perfStart).toFixed(0)}ms`);
+
+                return;
+            }
+
+            // SLOW TRACK / ERROR: Handle as JSON
             let responseData;
             try {
                 responseData = await startResponse.json();
             } catch (e) {
-                // If not JSON, throw status error
-                if (!startResponse.ok) throw new Error(`${t('serverError')}: ${startResponse.status}`);
+                console.error('[V-Mirror] JSON Parse Error:', e);
+                // If not JSON and not image, throw status error
+                if (!startResponse.ok) {
+                    throw new Error(`${t('serverError')}: ${startResponse.status}`);
+                } else {
+                    // It was OK but not JSON and not image?
+                    throw new Error(`Invalid response format: ${contentType}`);
+                }
             }
 
             console.log('[V-Mirror] API Response:', responseData);
@@ -932,27 +1154,45 @@
                 throw new Error(responseData.error);
             }
 
-            // Check if we got an immediate result (Google Vertex AI - synchronous)
+            // Legacy JSON handling (if backend falls back or for other models)
             if (responseData.output || responseData.outputType === 'url') {
-                console.log('[V-Mirror] Synchronous response - got result immediately');
+                console.log('[V-Mirror] Synchronous JSON response');
+                console.time('[V-Mirror PERF] Processing JSON response');
 
                 let resultSrc = responseData.output;
+
+                console.log(`[V-Mirror PERF] 📊 Result data type: ${responseData.outputType}`);
+                console.log(`[V-Mirror PERF] 📏 Result string length: ${resultSrc ? resultSrc.length : 0} characters`);
+
                 if (responseData.outputType === 'url') {
                     // Determine if output is absolute or relative
-                    if (resultSrc && !resultSrc.startsWith('http') && !resultSrc.startsWith('//')) {
+                    if (resultSrc && !resultSrc.startsWith('http') && !resultSrc.startsWith('//') && !resultSrc.startsWith('data:')) {
                         const relativePath = resultSrc.startsWith('/') ? resultSrc.slice(1) : resultSrc;
                         resultSrc = `${config.appProxyUrl}/${relativePath}`;
-                        console.log('[V-Mirror] Constructed result URL:', resultSrc);
                     }
                 }
 
+                console.log('[V-Mirror PERF] 💾 Setting state.resultImage...');
+                const stateSetStart = performance.now();
                 state.resultImage = resultSrc;
+                const stateSetTime = performance.now();
+                console.log(`[V-Mirror PERF] 💾 State set in: ${(stateSetTime - stateSetStart).toFixed(0)}ms`);
+
                 state.viewState = 'result';
+
+                console.log('[V-Mirror PERF] 🎨 Calling renderModal...');
+                const renderStart = performance.now();
                 renderModal();
+                const renderEnd = performance.now();
+                console.log(`[V-Mirror PERF] 🎨 renderModal completed in: ${(renderEnd - renderStart).toFixed(0)}ms`);
+
+                console.timeEnd('[V-Mirror PERF] Processing JSON response');
+                console.log(`[V-Mirror PERF] 🏁 TOTAL (from fetch): ${(performance.now() - perfStart).toFixed(0)}ms`);
+
                 return;
             }
 
-            // Fallback: If we got a taskId, use polling (legacy KlingAI behavior)
+            // Legacy Polling (KlingAI)
             if (responseData.taskId || responseData.id) {
                 console.log('[V-Mirror] Async response - starting polling');
                 state.taskId = responseData.taskId || responseData.id;
@@ -1013,6 +1253,81 @@
                 // Don't stop polling on network errors, just log
             }
         }, 2000);
+    }
+
+    // ============================================
+    // CDN Polling for Optimized Image URL
+    // ============================================
+    function startCdnPolling() {
+        if (!state.uploadTaskId) return;
+
+        let attempts = 0;
+        const maxAttempts = 20; // Poll for up to 40 seconds (20 * 2s)
+
+        state.cdnPollInterval = setInterval(async () => {
+            attempts++;
+
+            if (attempts > maxAttempts) {
+                console.log('[V-Mirror] CDN polling timeout, using blob URL');
+                clearInterval(state.cdnPollInterval);
+                state.cdnPollInterval = null;
+                return;
+            }
+
+            try {
+                const statusUrl = `${config.appProxyUrl}/api/cdn-status?taskId=${state.uploadTaskId}`;
+                const response = await fetch(statusUrl);
+
+                if (!response.ok) {
+                    console.warn(`[V-Mirror] CDN status check failed: ${response.status}`);
+                    return;
+                }
+
+                const data = await response.json();
+                console.log(`[V-Mirror] CDN poll attempt ${attempts}:`, data.status);
+
+                if (data.status === 'completed' && data.cdnUrl) {
+                    console.log(`[V-Mirror] CDN URL ready: ${data.cdnUrl}`);
+
+                    // Stop polling
+                    clearInterval(state.cdnPollInterval);
+                    state.cdnPollInterval = null;
+
+                    // Replace blob URL with CDN URL
+                    const oldUrl = state.resultImage;
+                    state.cdnUrl = data.cdnUrl;
+                    state.resultImage = data.cdnUrl;
+
+                    // Cleanup old blob URL
+                    if (oldUrl && oldUrl.startsWith('blob:')) {
+                        URL.revokeObjectURL(oldUrl);
+                    }
+
+                    // Update UI if modal is still open
+                    if (state.isModalOpen && state.viewState === 'result') {
+                        console.log('[V-Mirror] Updating UI with CDN URL');
+                        const resultImg = document.getElementById('v-mirror-result-img');
+                        if (resultImg) {
+                            resultImg.src = data.cdnUrl;
+                        }
+                        const lightboxImg = document.querySelector('.v-mirror-lightbox-image');
+                        if (lightboxImg) {
+                            lightboxImg.src = data.cdnUrl;
+                        }
+                    }
+
+                } else if (data.status === 'failed') {
+                    console.warn('[V-Mirror] CDN upload failed:', data.error);
+                    clearInterval(state.cdnPollInterval);
+                    state.cdnPollInterval = null;
+                }
+                // Continue polling for 'pending' status
+
+            } catch (error) {
+                console.error('[V-Mirror] CDN poll error:', error);
+                // Don't stop polling on network errors, continue trying
+            }
+        }, 2000); // Poll every 2 seconds
     }
 
     // ============================================

@@ -27,15 +27,17 @@ export const action = async ({ request }) => {
     }
 
     try {
-        // Authenticate proxy request
+        // P0 FIX: Authenticate proxy request - no fallback allowed in production
         let shop;
         try {
             const { session } = await authenticate.public.appProxy(request);
             if (session) shop = session.shop;
-        } catch (e) {
-            // Fallback for local dev testing
-            const url = new URL(request.url);
-            shop = url.searchParams.get("shop");
+        } catch (authError) {
+            console.error("[Analytics] App Proxy authentication failed:", authError.message);
+            return new Response(JSON.stringify({ error: "Unauthorized - Invalid request signature" }), {
+                status: 401,
+                headers: corsHeaders
+            });
         }
 
         if (!shop) {
@@ -51,27 +53,17 @@ export const action = async ({ request }) => {
         if (eventType === 'add_to_cart' && productId) {
             const pId = String(productId);
 
-            // Track Add to Cart
-            const existingProduct = await prisma.productStat.findUnique({
-                where: { shop_productId: { shop, productId: pId } }
+            // P2 FIX: Use upsert instead of findUnique + update/create to reduce DB roundtrips
+            await prisma.productStat.upsert({
+                where: { shop_productId: { shop, productId: pId } },
+                update: { addToCartCount: { increment: 1 } },
+                create: {
+                    shop,
+                    productId: pId,
+                    productTitle: productTitle || "Unknown Product",
+                    addToCartCount: 1
+                }
             });
-
-            if (existingProduct) {
-                await prisma.productStat.update({
-                    where: { id: existingProduct.id },
-                    data: { addToCartCount: { increment: 1 } }
-                });
-            } else {
-                // Should ideally exist from try-on, but create if not
-                await prisma.productStat.create({
-                    data: {
-                        shop,
-                        productId: pId,
-                        productTitle: productTitle || "Unknown Product",
-                        addToCartCount: 1
-                    }
-                });
-            }
 
             console.log(`[Analytics] Tracked Add-To-Cart for ${pId}`);
         }

@@ -31,6 +31,10 @@ model Session {
   emailVerified Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+
+  // P3 FIX: Add indexes for common query patterns
+  @@index([shop])
+  @@index([userId])
 }
 
 model WidgetSettings {
@@ -152,24 +156,43 @@ model TryOnEvent {
   shop          String
   productId     String
   productTitle  String?
-  
+
   // User/Device identification
   sessionId     String?  // Browser session identifier (localStorage UUID)
   fingerprintId String?  // Browser fingerprint ID
   deviceType    String?  // "mobile" | "desktop" | "tablet"
   userAgent     String?  // Full user agent string for analysis
-  
+
   // Request metadata
   ipHash        String?  // Hashed IP for privacy-safe geo analysis
   referer       String?  // Where the user came from
-  
+
   // Result
   success       Boolean  @default(true)
-  
+
   createdAt     DateTime @default(now())
-  
+
   @@index([shop, productId])
   @@index([shop, createdAt])
   @@index([sessionId])
   @@index([shop, deviceType])
+}
+
+// Background upload task tracking for CDN optimization
+model UploadTask {
+  id          String   @id @default(uuid())
+  taskId      String   @unique  // Custom task identifier
+  shop        String
+  filename    String
+
+  status      String   @default("pending") // pending | completed | failed
+  cdnUrl      String?  // Shopify CDN URL after successful upload
+  error       String?  // Error message if failed
+
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([taskId])
+  @@index([shop, status])
+  @@index([createdAt])
 }

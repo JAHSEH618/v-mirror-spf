@@ -25,26 +25,63 @@ const corsHeaders = {
 let cachedAccessToken = null;
 let tokenExpiryTime = 0;
 
-// OPTIMIZATION 5: Rate Limiting (in-memory, shop-based)
-const rateLimitStore = new Map();
+// OPTIMIZATION 5: Rate Limiting (database-backed for distributed deployments)
+// P1 FIX: Use database-backed rate limiting instead of in-memory for multi-instance support
+const rateLimitStore = new Map(); // In-memory cache layer for performance
 
-function checkRateLimit(shop, maxRequests = 100, windowMs = 60000) {
+async function checkRateLimit(shop, maxRequests = 100, windowMs = 60000) {
     const now = Date.now();
-    const record = rateLimitStore.get(shop) || { count: 0, resetTime: now + windowMs };
+    const windowStart = new Date(now - windowMs);
 
-    if (now > record.resetTime) {
-        record.count = 0;
-        record.resetTime = now + windowMs;
+    // Check in-memory cache first for performance
+    const cached = rateLimitStore.get(shop);
+    if (cached && now < cached.resetTime) {
+        cached.count++;
+        const allowed = cached.count <= maxRequests;
+        return {
+            allowed,
+            remaining: Math.max(0, maxRequests - cached.count),
+            resetTime: cached.resetTime
+        };
     }
 
-    record.count++;
-    rateLimitStore.set(shop, record);
+    // Fallback: Query database for rate limit state (distributed-safe)
+    try {
+        const recentEvents = await prisma.tryOnEvent.count({
+            where: {
+                shop,
+                createdAt: { gte: windowStart }
+            }
+        });
 
-    return {
-        allowed: record.count <= maxRequests,
-        remaining: Math.max(0, maxRequests - record.count),
-        resetTime: record.resetTime
-    };
+        const resetTime = now + windowMs;
+        const count = recentEvents + 1;
+
+        // Update cache
+        rateLimitStore.set(shop, { count, resetTime });
+
+        return {
+            allowed: count <= maxRequests,
+            remaining: Math.max(0, maxRequests - count),
+            resetTime
+        };
+    } catch (dbError) {
+        console.error("[Rate Limit] Database query failed, using in-memory fallback:", dbError.message);
+        // Fallback to in-memory if DB fails
+        const record = rateLimitStore.get(shop) || { count: 0, resetTime: now + windowMs };
+        if (now > record.resetTime) {
+            record.count = 0;
+            record.resetTime = now + windowMs;
+        }
+        record.count++;
+        rateLimitStore.set(shop, record);
+
+        return {
+            allowed: record.count <= maxRequests,
+            remaining: Math.max(0, maxRequests - record.count),
+            resetTime: record.resetTime
+        };
+    }
 }
 
 // Clean up old rate limit records every 5 minutes
@@ -59,19 +96,19 @@ setInterval(() => {
 
 // ... [Keep existing helper functions: getAccessToken, isUrl, urlToBase64, ensureBase64] ...
 
-// Helper: Get access token from Service Account (fallback if no API key)
+
 async function getAccessToken() {
-    console.log("[API Debug] Attempting to get access token from Service Account...");
+
     const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
     // OPTIMIZATION 2: Return cached token if still valid (with 5-minute buffer)
     const now = Math.floor(Date.now() / 1000);
     if (cachedAccessToken && tokenExpiryTime > now + 300) {
-        console.log("[API Debug] Using cached access token");
+
         return cachedAccessToken;
     }
 
-    console.log("[API Debug] Generating new access token...");
+
 
     if (!credentialsPath) {
         throw new Error("GOOGLE_APPLICATION_CREDENTIALS environment variable not set");
@@ -119,7 +156,7 @@ async function getAccessToken() {
 
     const jwt = `${signatureInput}.${signature}`;
 
-    console.log("[API Debug] Exchanging JWT for access token...");
+
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -137,7 +174,7 @@ async function getAccessToken() {
     cachedAccessToken = tokenData.access_token;
     tokenExpiryTime = now + (tokenData.expires_in || 3600);
 
-    console.log(`[API Debug] Access token obtained and cached (expires in ${tokenData.expires_in || 3600}s)`);
+
     return cachedAccessToken;
 }
 
@@ -164,7 +201,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
     throw lastError;
 }
 
-// Helper: Check if input is a URL
+
 function isUrl(input) {
     if (!input || typeof input !== 'string') return false;
     return input.startsWith('http://') || input.startsWith('https://') || input.startsWith('//');
@@ -174,7 +211,7 @@ function isUrl(input) {
 async function urlToBase64(url) {
     try {
         const fullUrl = url.startsWith('//') ? `https:${url}` : url;
-        console.log(`[API Debug] Fetching image from URL: ${fullUrl.substring(0, 80)}...`);
+
 
         // Use retry logic for external image fetching
         const response = await fetchWithRetry(fullUrl, {}, 3);
@@ -184,7 +221,7 @@ async function urlToBase64(url) {
 
         const arrayBuffer = await response.arrayBuffer();
         const base64 = Buffer.from(arrayBuffer).toString('base64');
-        console.log(`[API Debug] Converted URL to Base64, length: ${base64.length}`);
+
         return base64;
     } catch (error) {
         console.error(`[API Debug] URL to Base64 conversion failed:`, error.message);
@@ -208,13 +245,13 @@ async function ensureBase64(input) {
     return input; // Assume raw base64
 }
 
-// Helper: Upload image to Shopify Files API
-async function uploadImageToShopify(admin, imageBase64, filename) {
-    console.log(`[Shopify Files] Starting upload for ${filename}...`);
-    const startTime = Date.now();
+
+async function uploadImageToShopify(admin, imageBase64, filename, waitForReady = true) {
+
+
 
     // 1. Staged Upload Create
-    console.time("Shopify:StagedUpload");
+
     const stagedUploadsQuery = `
     mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
       stagedUploadsCreate(input: $input) {
@@ -253,7 +290,7 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
     });
 
     const stagedData = await stagedResult.json();
-    console.timeEnd("Shopify:StagedUpload");
+
 
     const target = stagedData.data?.stagedUploadsCreate?.stagedTargets?.[0];
 
@@ -263,7 +300,7 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
     }
 
     // 2. Upload to Staged URL
-    console.time("Shopify:UploadToGCS");
+
     const formData = new FormData();
     target.parameters.forEach(param => {
         formData.append(param.name, param.value);
@@ -273,7 +310,7 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
     const blob = new Blob([buffer], { type: mimeType });
     formData.append("file", blob, filename);
 
-    console.log(`[Shopify Files] Uploading to ${target.url}...`);
+
     const uploadResponse = await fetch(target.url, {
         method: "POST",
         body: formData
@@ -284,10 +321,10 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
         console.error(`[Shopify Files] Upload to bucket failed: ${uploadResponse.status}`, text);
         throw new Error(`Failed to upload file to storage: ${uploadResponse.status}`);
     }
-    console.timeEnd("Shopify:UploadToGCS");
+
 
     // 3. Create File in Shopify
-    console.time("Shopify:FileCreate");
+
     const fileCreateQuery = `
     mutation fileCreate($files: [FileCreateInput!]!) {
       fileCreate(files: $files) {
@@ -307,7 +344,7 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
       }
     }`;
 
-    console.log(`[Shopify Files] Creating file record for ${target.resourceUrl}...`);
+
     const createResult = await admin.graphql(fileCreateQuery, {
         variables: {
             files: [{
@@ -319,7 +356,7 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
     });
 
     const createData = await createResult.json();
-    console.timeEnd("Shopify:FileCreate");
+
 
     const file = createData.data?.fileCreate?.files?.[0];
 
@@ -328,14 +365,20 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
         throw new Error("Failed to create file record in Shopify");
     }
 
-    console.log(`[Shopify Files] File created with ID: ${file.id}, Status: ${file.fileStatus}`);
+
+
+    // OPTIMIZATION: If not waiting for ready, return early
+    if (!waitForReady) {
+
+        return null; // Don't block
+    }
 
     // Shopify processes files asynchronously. Poll until URL is available.
     let publicUrl = file.image?.url;
     const fileId = file.id;
 
     if (!publicUrl && fileId) {
-        console.log("[Shopify Files] URL not immediately available, polling...");
+
 
         const fileQueryGql = `
         query getFile($id: ID!) {
@@ -360,11 +403,11 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
             const pollData = await pollResult.json();
             const polledFile = pollData.data?.node;
 
-            console.log(`[Shopify Files] Poll ${i + 1}: Status=${polledFile?.fileStatus}`);
+
 
             if (polledFile?.image?.url) {
                 publicUrl = polledFile.image.url;
-                console.log(`[Shopify Files] URL obtained after ${i + 1} polls: ${publicUrl}`);
+
                 break;
             }
 
@@ -374,8 +417,8 @@ async function uploadImageToShopify(admin, imageBase64, filename) {
         }
     }
 
-    console.log(`[Shopify Files] Final URL: ${publicUrl}`);
-    console.log(`[Shopify Files] Total upload time: ${(Date.now() - startTime) / 1000}s`);
+
+
 
     return publicUrl;
 }
@@ -391,7 +434,7 @@ export const loader = async ({ request }) => {
     });
 };
 
-// Handle POST requests - Virtual Try-On with Google Vertex AI
+
 export const action = async ({ request }) => {
     // Global try-catch to prevent server crash
     try {
@@ -402,27 +445,35 @@ export const action = async ({ request }) => {
             });
         }
 
-        console.log(`[API Debug] Action processing started...`);
 
-        // Authenticate the App Proxy request
+
+        // P0 FIX: Authenticate the App Proxy request - no fallback allowed in production
         let shop;
         try {
             const { session } = await authenticate.public.appProxy(request);
             if (session) {
                 shop = session.shop;
-                console.log(`[API Debug] App Proxy authenticated for shop: ${shop}`);
+
             }
         } catch (authError) {
-            console.warn("[API Debug] App Proxy authentication failed or locally testing without signature. Fallback to query param.");
-            // Fallback for local testing if needed
-            const url = new URL(request.url);
-            shop = url.searchParams.get("shop");
+            console.error("[API Debug] App Proxy authentication failed:", authError.message);
+            return new Response(JSON.stringify({ error: "Unauthorized - Invalid request signature" }), {
+                status: 401,
+                headers: corsHeaders
+            });
         }
 
-        console.log(`[API Debug] Project: ${GOOGLE_CLOUD_PROJECT}, Shop: ${shop}`);
+        if (!shop) {
+            return new Response(JSON.stringify({ error: "Unauthorized" }), {
+                status: 401,
+                headers: corsHeaders
+            });
+        }
+
+
 
         // OPTIMIZATION 5: Rate Limiting - Check before processing
-        const rateCheck = checkRateLimit(shop, 100, 60000);
+        const rateCheck = await checkRateLimit(shop, 100, 60000);
         if (!rateCheck.allowed) {
             console.warn(`[Rate Limit] Shop ${shop} exceeded limit (${rateCheck.remaining} remaining)`);
             return new Response(JSON.stringify({
@@ -455,13 +506,12 @@ export const action = async ({ request }) => {
         let apiUrl = `https://${GOOGLE_CLOUD_LOCATION}-aiplatform.googleapis.com/v1/projects/${GOOGLE_CLOUD_PROJECT}/locations/${GOOGLE_CLOUD_LOCATION}/publishers/google/models/virtual-try-on-preview-08-04:predict`;
 
         if (GOOGLE_API_KEY && GOOGLE_API_KEY !== 'your-api-key-here') {
-            // Use API Key (simpler)
-            console.log("[API Debug] Using API Key authentication");
-            authHeader = null; // API key is passed as query parameter
-            apiUrl += `?key=${GOOGLE_API_KEY}`;
+            // P1 FIX: Use API Key in header instead of URL query parameter to prevent exposure in logs
+
+            authHeader = `Bearer ${GOOGLE_API_KEY}`;
         } else {
             // Use Service Account (OAuth)
-            console.log("[API Debug] Using Service Account authentication");
+
             try {
                 const accessToken = await getAccessToken();
                 authHeader = `Bearer ${accessToken}`;
@@ -476,15 +526,44 @@ export const action = async ({ request }) => {
             }
         }
 
-        // Parse request body safely
-        let body;
+        // Parse request body (JSON or FormData)
+        let body = {};
+        const contentType = request.headers.get("Content-Type") || "";
+
         try {
-            // Cloning request to ensure we can read it safely if needed
-            const clone = request.clone();
-            body = await clone.json();
+            if (contentType.includes("multipart/form-data")) {
+
+                const formData = await request.formData();
+
+                // Helper to get file as base64
+                const getFileBase64 = async (field) => {
+                    const entry = formData.get(field);
+                    if (!entry) return null;
+                    if (entry instanceof File) {
+                        const buffer = await entry.arrayBuffer();
+                        return Buffer.from(buffer).toString('base64');
+                    }
+                    return entry; // Assume string if not file
+                };
+
+                body = {
+                    userImage: await getFileBase64("userImage"),
+                    garmentImage: await getFileBase64("garmentImage"), // garment usually URL string
+                    productId: formData.get("productId"),
+                    productTitle: formData.get("productTitle"),
+                    garmentType: formData.get("garmentType"),
+                    sessionId: formData.get("sessionId"),
+                    deviceType: formData.get("deviceType"),
+                    fingerprintId: formData.get("fingerprintId")
+                };
+            } else {
+                // Cloning request to ensure we can read it safely if needed
+                const clone = request.clone();
+                body = await clone.json();
+            }
         } catch (e) {
             console.error("[API Debug] Failed to parse request body:", e);
-            return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+            return new Response(JSON.stringify({ error: "Invalid request body" }), {
                 status: 400,
                 headers: corsHeaders
             });
@@ -516,10 +595,7 @@ export const action = async ({ request }) => {
             });
         }
 
-        console.log("[API Debug] Garment type:", garmentType || "auto-detect");
-        console.log(`[API Debug] Session: ${sessionId}, Device: ${deviceType}, FP: ${fingerprintId}`);
 
-        console.log("[API Debug] Converting images...");
 
         // OPTIMIZATION 1: Parallel image processing - 2x faster
         const [personImageBase64, productImageBase64] = await Promise.all([
@@ -538,7 +614,7 @@ export const action = async ({ request }) => {
         }
 
         const totalSize = personImageBase64.length + productImageBase64.length;
-        console.log(`[API Debug] Payload size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+
 
         // Build product image object with optional type
         const productImageObject = {
@@ -548,7 +624,7 @@ export const action = async ({ request }) => {
         // Add garment type if provided (tops, bottoms, or dresses)
         if (garmentType && ['tops', 'bottoms', 'dresses'].includes(garmentType)) {
             productImageObject.type = garmentType;
-            console.log(`[API Debug] Including garment type in payload: ${garmentType}`);
+
         }
 
         // Build Vertex AI request payload
@@ -564,32 +640,34 @@ export const action = async ({ request }) => {
             }
         };
 
-        console.log(`[API Debug] Calling Vertex AI: ${apiUrl.split('?')[0]}`);
 
-        // Build headers
-        const headers = {
-            "Content-Type": "application/json",
-        };
-        if (authHeader) {
-            headers["Authorization"] = authHeader;
-        }
 
-        const response = await fetch(apiUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-        });
 
-        console.log(`[API Debug] Vertex AI Status: ${response.status}`);
 
+
+
+        // Make the actual API call
+        const response = await fetchWithRetry(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': authHeader,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        }, 3); // 3 retries with exponential backoff
+
+
+        // ============================================
+        // END VERTEX AI CALL
+        // ============================================
+
+
+
+        // Parse the response
         const data = await response.json();
 
         // Add detailed logging for debugging
-        console.log(`[API Debug] Response data structure:`, JSON.stringify({
-            hasPredictions: !!data.predictions,
-            predictionsLength: data.predictions?.length,
-            firstPrediction: data.predictions?.[0] ? Object.keys(data.predictions[0]) : null
-        }));
+
 
         if (!response.ok) {
             console.error("[API Debug] Vertex AI API Error:", JSON.stringify(data, null, 2));
@@ -662,7 +740,11 @@ export const action = async ({ request }) => {
 
         const mimeType = firstPrediction.mimeType || "image/png";
 
-        console.log(`[API Debug] Success! Generated image size: ${resultBase64.length} bytes`);
+        // ========================================
+        // PERFORMANCE LOGGING - Detailed breakdown
+        // ========================================
+
+
 
         // TRACK USAGE & PRODUCT STATS
         // Using upserts and atomic updates to prevent race conditions
@@ -741,53 +823,92 @@ export const action = async ({ request }) => {
                     }
                 });
 
-                console.log(`[API Debug] Tracked stats for product: ${productTitle} (${pId})`);
+
             }
 
         } catch (dbError) {
-            console.error("[API Debug] Failed to track usage stats:", dbError);
+            console.error("[PERF] ❌ Failed to track usage stats:", dbError);
             // Don't block response if stats fail
         }
 
-        // SAVE TO SHOPIFY FILES INSTEAD OF LOCAL DISK
-        try {
-            if (!shop) {
-                throw new Error("Missing shop parameter, cannot upload to Shopify Files");
-            }
 
-            // Get admin context via unauthenticated helper for offline access
-            console.log(`[Shopify Files] Getting admin context for shop: ${shop}`);
+
+
+
+        // BEST PERFORMANCE: Upload to CDN and return URL (not base64)
+        // Frontend only needs to parse ~100 character URL instead of 3.5MB base64
+
+
+        try {
+            // Get admin context
+
             const { admin } = await unauthenticated.admin(shop);
 
             const timestamp = Date.now();
             const random = Math.floor(Math.random() * 1000);
             const filename = `try-on-${timestamp}-${random}.png`;
 
-            // Upload via Helper
-            const publicUrl = await uploadImageToShopify(admin, resultBase64, filename);
 
-            if (publicUrl) {
-                return new Response(JSON.stringify({
-                    success: true,
-                    status: "succeed",
-                    outputType: "url",
-                    output: publicUrl
-                }), {
-                    headers: corsHeaders
-                });
-            } else {
-                throw new Error("Uploaded file but got no URL");
+
+            // Upload and wait for URL (with polling)
+            const cdnUrl = await uploadImageToShopify(admin, resultBase64, filename, true);
+
+
+
+            if (!cdnUrl) {
+                throw new Error("Failed to get CDN URL after upload");
             }
 
+
+
+            // Return CDN URL in JSON response
+            const responseData = {
+                output: cdnUrl,
+                outputType: 'url',
+                status: 'succeed',
+                mimeType: mimeType || "image/png",
+                sizeBytes: Math.floor(resultBase64.length * 0.75)
+            };
+
+
+
+            return new Response(JSON.stringify(responseData), {
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Try-On-Status": "succeed",
+                    "X-Shop-Id": shop,
+                    "X-Response-Time": new Date().toISOString(),
+                    "X-CDN-URL": cdnUrl,
+                    // CORS headers
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS",
+                    "Access-Control-Expose-Headers": "X-Try-On-Status, X-Shop-Id, X-Response-Time, X-CDN-URL"
+                }
+            });
+
         } catch (uploadError) {
-            console.error("[API Debug] Failed to upload to Shopify Files:", uploadError);
-            // Fallback to base64 if upload fails
-            return new Response(JSON.stringify({
-                success: true,
-                status: "succeed",
-                output: `data:${mimeType};base64,${resultBase64}`
-            }), {
-                headers: corsHeaders
+            console.error("[Shopify CDN] ❌ Upload failed:", uploadError);
+
+
+            // Fallback to data URL if CDN upload fails
+            const dataUrl = `data:${mimeType || "image/png"};base64,${resultBase64}`;
+
+            const responseData = {
+                output: dataUrl,
+                outputType: 'dataUrl',
+                status: 'succeed',
+                mimeType: mimeType || "image/png",
+                sizeBytes: Math.floor(resultBase64.length * 0.75),
+                warning: "CDN upload failed, using data URL fallback"
+            };
+
+            return new Response(JSON.stringify(responseData), {
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Try-On-Status": "succeed",
+                    "X-Shop-Id": shop,
+                    "Access-Control-Allow-Origin": "*"
+                }
             });
         }
 

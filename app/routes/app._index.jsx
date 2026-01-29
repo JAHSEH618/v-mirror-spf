@@ -27,17 +27,11 @@ export const loader = async ({ request }) => {
     );
     const themesData = await themesResponse.json();
     const mainThemeId = themesData.data?.themes?.nodes?.[0]?.id;
-
-    console.log("=== Theme Detection Start ===");
-    console.log("mainThemeId:", mainThemeId);
-
     if (mainThemeId) {
       // 2. Get Asset (settings_data.json)
       try {
         // Extract numeric ID from GID (handles both Theme and OnlineStoreTheme formats)
         const themeId = mainThemeId.split('/').pop();
-        console.log("Fetching settings_data.json for themeId:", themeId);
-
         const response = await fetch(
           `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
           {
@@ -46,30 +40,18 @@ export const loader = async ({ request }) => {
             }
           }
         );
-
-        console.log("REST API response status:", response.status);
         const json = await response.json();
         const asset = json.asset;
-        console.log("Asset found:", !!asset, "Has value:", !!asset?.value);
-
         if (asset && asset.value) {
           const settingsData = JSON.parse(asset.value);
           const blocks = settingsData.current?.blocks || {};
-
-          console.log("=== App Block Detection Debug ===");
-          console.log("Blocks found:", Object.keys(blocks).length);
-
           // Check for the extension by handle "try-on-widget" in the block type URI
           // Format usually: shopify://apps/<app-id>/blocks/<handle>/<uuid>
           isEmbedEnabled = Object.values(blocks).some((block) => {
             const typeMatch = block.type.includes("try-on-widget");
             const notDisabled = String(block.disabled) !== "true";
-            console.log(`Block type: ${block.type}, typeMatch: ${typeMatch}, disabled: ${block.disabled}, notDisabled: ${notDisabled}`);
             return typeMatch && notDisabled;
           });
-
-          console.log("isEmbedEnabled result:", isEmbedEnabled);
-          console.log("================================");
         }
       } catch (restError) {
         console.warn("REST Asset check failed:", restError);
@@ -209,4 +191,3 @@ export default function Dashboard() {
     </DashboardLayout>
   );
 }
-

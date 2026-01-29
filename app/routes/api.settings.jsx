@@ -1,20 +1,78 @@
 import prisma from "../db.server";
+import { authenticate } from "../shopify.server";
+
+// Simple in-memory cache for widget settings
+const settingsCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedSettings(shop) {
+    const cached = settingsCache.get(shop);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+    return null;
+}
+
+function setCachedSettings(shop, data) {
+    settingsCache.set(shop, { data, timestamp: Date.now() });
+}
+
+// Clean up old cache entries every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [shop, cached] of settingsCache.entries()) {
+        if (now - cached.timestamp > CACHE_TTL * 2) {
+            settingsCache.delete(shop);
+        }
+    }
+}, 10 * 60 * 1000);
+
+const corsHeaders = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type"
+};
 
 // This route handles App Proxy requests from the storefront
 // URL: /apps/v-mirror/api/settings?shop=xxx.myshopify.com
 export const loader = async ({ request }) => {
-    const url = new URL(request.url);
-    const shop = url.searchParams.get("shop");
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+        return new Response(null, { headers: corsHeaders });
+    }
 
-    console.log(`[API Debug] Settings request received for shop: ${shop}`);
+    // P0 FIX: Authenticate App Proxy request - no fallback allowed
+    let shop;
+    try {
+        const { session } = await authenticate.public.appProxy(request);
+        if (session) {
+            shop = session.shop;
+        }
+    } catch (authError) {
+        console.error("[API Debug] App Proxy authentication failed:", authError.message);
+        return new Response(JSON.stringify({ error: "Unauthorized - Invalid request signature" }), {
+            status: 401,
+            headers: corsHeaders,
+        });
+    }
 
     if (!shop) {
-        console.error("[API Debug] Missing shop parameter");
-        return new Response(JSON.stringify({ error: "Shop parameter required" }), {
-            status: 400,
+        console.error("[API Debug] Missing shop from authenticated session");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
+            headers: corsHeaders,
+        });
+    }
+
+    // P2 FIX: Check cache first
+    const cachedSettings = getCachedSettings(shop);
+    if (cachedSettings) {
+        return new Response(JSON.stringify(cachedSettings), {
             headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
+                ...corsHeaders,
+                "Cache-Control": "public, max-age=300", // 5 minutes client cache
+                "X-Cache": "HIT"
             },
         });
     }
@@ -26,7 +84,6 @@ export const loader = async ({ request }) => {
 
     // Return default settings if not found
     if (!settings) {
-        console.log(`[API Debug] No settings found for ${shop}, returning defaults`);
         settings = {
             position: "bottom-right",
             horizontalOffset: 20,
@@ -43,15 +100,17 @@ export const loader = async ({ request }) => {
             animationStyle: "fade-in",
         };
     } else {
-        console.log(`[API Debug] Returning saved settings for ${shop}`);
     }
+
+    // P2 FIX: Cache the settings
+    setCachedSettings(shop, settings);
 
     // Return settings as JSON with CORS headers for storefront
     return new Response(JSON.stringify(settings), {
         headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-cache, no-store, must-revalidate", // Allow no caching
+            ...corsHeaders,
+            "Cache-Control": "public, max-age=300", // 5 minutes client cache
+            "X-Cache": "MISS"
         },
     });
 };

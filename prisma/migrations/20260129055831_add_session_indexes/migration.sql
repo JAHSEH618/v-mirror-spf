@@ -1,0 +1,5 @@
+-- CreateIndex
+CREATE INDEX "Session_shop_idx" ON "Session"("shop");
+
+-- CreateIndex
+CREATE INDEX "Session_userId_idx" ON "Session"("userId");
