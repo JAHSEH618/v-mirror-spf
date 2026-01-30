@@ -118,15 +118,26 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
     const [step, setStep] = useState(1);
     const [reason, setReason] = useState("");
     const [feedback, setFeedback] = useState("");
+    const [showDiscountConfirm, setShowDiscountConfirm] = useState(false);
 
     if (!isOpen) return null;
 
     const handleApplyDiscount = () => {
+        // Show confirmation first if not already confirmed
+        if (!showDiscountConfirm) {
+            setShowDiscountConfirm(true);
+            return;
+        }
+        // User confirmed - proceed with discount
         submit(
             { actionType: "applyDiscount" },
             { method: "POST" }
         );
         onClose();
+    };
+
+    const cancelDiscountConfirm = () => {
+        setShowDiscountConfirm(false);
     };
 
     const handleConfirmCancel = () => {
@@ -209,32 +220,65 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                         </div>
                     )}
 
-                    {/* Step 2: Retention Offer */}
+                    {/* Step 2: Retention Offer or Discount Confirmation */}
                     {step === 2 && (
                         <div style={{ textAlign: 'center' }}>
-                            <div style={{
-                                width: '64px', height: '64px', backgroundColor: 'var(--p-100)', borderRadius: '50%', margin: '0 auto 16px',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <Gift size={32} color="var(--primary-color)" />
-                            </div>
+                            {!showDiscountConfirm ? (
+                                <>
+                                    <div style={{
+                                        width: '64px', height: '64px', backgroundColor: 'var(--p-100)', borderRadius: '50%', margin: '0 auto 16px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <Gift size={32} color="var(--primary-color)" />
+                                    </div>
 
-                            <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
-                                {t('cancelSubscription.step2DontLose')}
-                            </h3>
+                                    <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
+                                        {t('cancelSubscription.step2DontLose')}
+                                    </h3>
 
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
-                                {t('cancelSubscription.step2Offer')}
-                            </p>
+                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+                                        {t('cancelSubscription.step2Offer')}
+                                    </p>
 
-                            <div style={{
-                                backgroundColor: 'var(--p-50)', border: '1px solid var(--p-100)', borderRadius: '12px', padding: '16px', marginBottom: '24px'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--primary-hover)', fontWeight: 500 }}>
-                                    <Check size={20} />
-                                    {t('cancelSubscription.step2OfferLabel')}
-                                </div>
-                            </div>
+                                    <div style={{
+                                        backgroundColor: 'var(--p-50)', border: '1px solid var(--p-100)', borderRadius: '12px', padding: '16px', marginBottom: '24px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--primary-hover)', fontWeight: 500 }}>
+                                            <Check size={20} />
+                                            {t('cancelSubscription.step2OfferLabel')}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Discount Confirmation Dialog */}
+                                    <div style={{
+                                        width: '64px', height: '64px', backgroundColor: '#FEF3C7', borderRadius: '50%', margin: '0 auto 16px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <AlertTriangle size={32} color="#D97706" />
+                                    </div>
+
+                                    <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
+                                        {t('cancelSubscription.discountConfirmTitle') || 'Confirm Discount Application'}
+                                    </h3>
+
+                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+                                        {t('cancelSubscription.discountConfirmDesc') || 'By applying this discount, the following will happen:'}
+                                    </p>
+
+                                    <div style={{
+                                        backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '16px', marginBottom: '24px',
+                                        textAlign: 'left'
+                                    }}>
+                                        <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-main)', fontSize: '14px', lineHeight: 1.8 }}>
+                                            <li>{t('cancelSubscription.discountConfirmItem1') || 'Your current subscription will be replaced'}</li>
+                                            <li>{t('cancelSubscription.discountConfirmItem2') || '20% discount applied for 3 months'}</li>
+                                            <li>{t('cancelSubscription.discountConfirmItem3') || 'You will be redirected to Shopify to confirm'}</li>
+                                        </ul>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 
@@ -281,12 +325,25 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                     {/* Step 2 Actions */}
                     {step === 2 && (
                         <>
-                            <button onClick={() => setStep(3)} style={{ ...styles.button, background: 'none', color: 'var(--text-secondary)' }}>
-                                {t('cancelSubscription.noThanks')}
-                            </button>
-                            <button onClick={handleApplyDiscount} style={{ ...styles.button, ...styles.btnPrimary }}>
-                                {t('cancelSubscription.applyDiscount')}
-                            </button>
+                            {!showDiscountConfirm ? (
+                                <>
+                                    <button onClick={() => setStep(3)} style={{ ...styles.button, background: 'none', color: 'var(--text-secondary)' }}>
+                                        {t('cancelSubscription.noThanks')}
+                                    </button>
+                                    <button onClick={handleApplyDiscount} style={{ ...styles.button, ...styles.btnPrimary }}>
+                                        {t('cancelSubscription.applyDiscount')}
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button onClick={cancelDiscountConfirm} style={{ ...styles.button, ...styles.btnSecondary }}>
+                                        {t('common.cancel') || 'Cancel'}
+                                    </button>
+                                    <button onClick={handleApplyDiscount} style={{ ...styles.button, ...styles.btnPrimary }}>
+                                        {t('cancelSubscription.confirmAndApply') || 'Confirm & Apply'}
+                                    </button>
+                                </>
+                            )}
                         </>
                     )}
 

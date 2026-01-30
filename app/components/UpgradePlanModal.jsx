@@ -207,10 +207,16 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
         }
     ];
 
-    // Helper to find current price index
-    // Treat "Free Plan" (backend) same as "Free Trial" (frontend)
-    const normalizedCurrentName = currentPlanName === "Free Plan" ? t('subscription.plans.free.name') : currentPlanName;
-    const currentPlanObj = plans.find(p => p.name === normalizedCurrentName) || plans[0];
+    // Helper to map backend plan name to frontend plan ID
+    const getPlanIdFromBackendName = (name) => {
+        if (!name) return 'free';
+        if (name.includes('Enterprise')) return 'enterprise';
+        if (name.includes('Professional')) return 'professional';
+        return 'free'; // Free Plan, Free Trial, etc.
+    };
+
+    const currentPlanId = getPlanIdFromBackendName(currentPlanName);
+    const currentPlanObj = plans.find(p => p.id === currentPlanId) || plans[0];
     const currentPrice = currentPlanObj.priceNum;
 
     return (
@@ -228,7 +234,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
 
                 <div style={styles.grid}>
                     {plans.map((plan) => {
-                        const isCurrent = normalizedCurrentName === plan.name;
+                        const isCurrent = currentPlanId === plan.id;
                         const isFeatured = plan.featured;
 
                         let btnText = t('subscription.selectPlan');

@@ -190,6 +190,13 @@ export const zh = {
         noThanks: "不用了，继续取消",
         applyDiscount: "应用折扣",
         confirmCancel: "确认取消",
+        // 折扣确认
+        discountConfirmTitle: "确认应用折扣",
+        discountConfirmDesc: "应用此折扣后，将发生以下情况：",
+        discountConfirmItem1: "您当前的订阅将被替换",
+        discountConfirmItem2: "20%折扣将应用于接下来3个月",
+        discountConfirmItem3: "您将被重定向到Shopify进行确认",
+        confirmAndApply: "确认并应用",
     },
 
     // Appearance Page

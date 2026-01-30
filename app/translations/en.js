@@ -190,6 +190,13 @@ export const en = {
         noThanks: "No thanks, continue to cancel",
         applyDiscount: "Apply Discount",
         confirmCancel: "Confirm Cancellation",
+        // Discount Confirmation
+        discountConfirmTitle: "Confirm Discount Application",
+        discountConfirmDesc: "By applying this discount, the following will happen:",
+        discountConfirmItem1: "Your current subscription will be replaced",
+        discountConfirmItem2: "20% discount applied for 3 months",
+        discountConfirmItem3: "You will be redirected to Shopify to confirm",
+        confirmAndApply: "Confirm & Apply",
     },
 
     // Appearance Page

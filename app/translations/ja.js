@@ -190,6 +190,13 @@ export const ja = {
         noThanks: "結構です、解約を続ける",
         applyDiscount: "割引を適用",
         confirmCancel: "解約を確定",
+        // 割引確認
+        discountConfirmTitle: "割引適用の確認",
+        discountConfirmDesc: "この割引を適用すると、以下が行われます：",
+        discountConfirmItem1: "現在のサブスクリプションが置き換えられます",
+        discountConfirmItem2: "20%割引が3ヶ月間適用されます",
+        discountConfirmItem3: "確認のためShopifyにリダイレクトされます",
+        confirmAndApply: "確認して適用",
     },
 
     // Appearance Page

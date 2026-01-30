@@ -14,6 +14,40 @@ const GOOGLE_CLOUD_PROJECT = process.env.GOOGLE_CLOUD_PROJECT;
 const GOOGLE_CLOUD_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || "us-central1";
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
+// Dynamic CORS - in production, validate origin against shop domain
+// eslint-disable-next-line no-undef
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function getCorsHeaders(request, shop = null) {
+    // Get origin from request
+    const origin = request?.headers?.get("Origin") || "*";
+
+    // In production, validate origin matches shop domain pattern
+    let allowedOrigin = "*";
+    if (IS_PRODUCTION && shop) {
+        // Allow requests from the shop's domain
+        const shopDomain = shop.replace(".myshopify.com", "");
+        if (origin.includes(shopDomain) || origin.includes(".myshopify.com")) {
+            allowedOrigin = origin;
+        } else {
+            // For App Proxy requests, origin may be the shop itself
+            allowedOrigin = `https://${shop}`;
+        }
+    } else {
+        // In development, allow all origins for testing
+        allowedOrigin = origin === "null" ? "*" : origin;
+    }
+
+    return {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": allowedOrigin,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Credentials": "true"
+    };
+}
+
+// Legacy static headers for backwards compatibility (used in error responses before auth)
 const corsHeaders = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
@@ -904,10 +938,9 @@ export const action = async ({ request }) => {
 
             return new Response(JSON.stringify(responseData), {
                 headers: {
-                    "Content-Type": "application/json",
+                    ...getCorsHeaders(request, shop),
                     "X-Try-On-Status": "succeed",
-                    "X-Shop-Id": shop,
-                    "Access-Control-Allow-Origin": "*"
+                    "X-Shop-Id": shop
                 }
             });
         }

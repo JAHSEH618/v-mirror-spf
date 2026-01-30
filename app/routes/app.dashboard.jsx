@@ -25,6 +25,8 @@ export const links = () => [
 // Billing Configuration
 const MONTHLY_PLAN = "Professional Plan";
 const ENTERPRISE_PLAN = "Enterprise Plan";
+// eslint-disable-next-line no-undef
+const IS_TEST_MODE = process.env.NODE_ENV !== "production";
 
 export const loader = async ({ request }) => {
     const { session, admin, billing } = await authenticate.admin(request);
@@ -88,23 +90,26 @@ export const loader = async ({ request }) => {
         return result === null ? false : result; // Default to false if timeout
     };
 
-    // Billing check with timeout (less critical)
+    // Billing check with timeout - also returns subscription details for sync
     const checkBillingStatusWithTimeout = async () => {
         const TIMEOUT_MS = 1500;
 
         const timeoutPromise = new Promise((resolve) => {
-            setTimeout(() => resolve(false), TIMEOUT_MS);
+            setTimeout(() => resolve({ hasActivePayment: false, subscription: null }), TIMEOUT_MS);
         });
 
         const checkPromise = (async () => {
             try {
                 const billingCheck = await billing.check({
                     plans: [MONTHLY_PLAN, ENTERPRISE_PLAN],
-                    isTest: true,
+                    isTest: IS_TEST_MODE,
                 });
-                return billingCheck.hasActivePayment;
+                return {
+                    hasActivePayment: billingCheck.hasActivePayment,
+                    subscription: billingCheck.appSubscriptions?.[0] || null
+                };
             } catch (e) {
-                return false;
+                return { hasActivePayment: false, subscription: null };
             }
         })();
 
@@ -161,7 +166,8 @@ export const loader = async ({ request }) => {
 
     // === Process billing info (create if not exists) ===
     let billingInfo = billingInfoResult;
-    let hasPayment = hasPaymentResult;
+    let hasPayment = hasPaymentResult.hasActivePayment;
+    const shopifySubscription = hasPaymentResult.subscription;
 
     if (!billingInfo) {
         billingInfo = await prisma.billingInfo.create({
@@ -173,6 +179,70 @@ export const loader = async ({ request }) => {
             },
             include: { paymentMethods: true }
         });
+    } else if (shopifySubscription) {
+        // === Billing State Sync ===
+        // Reconcile local DB with Shopify's source of truth to prevent drift
+        const shopifyPlan = shopifySubscription.name;
+        const shopifyStatus = shopifySubscription.status;
+        const localPlan = billingInfo.planName;
+        const localStatus = billingInfo.status;
+
+        // Determine expected values based on Shopify state
+        let expectedPlan = localPlan;
+        let expectedLimit = billingInfo.usageLimit;
+        let expectedStatus = localStatus;
+
+        if (shopifyStatus === "ACTIVE") {
+            if (shopifyPlan.includes("Enterprise")) {
+                expectedPlan = ENTERPRISE_PLAN;
+                expectedLimit = 10000;
+            } else if (shopifyPlan.includes("Professional")) {
+                expectedPlan = MONTHLY_PLAN;
+                expectedLimit = 1000;
+            }
+            expectedStatus = "ACTIVE";
+        } else if (["CANCELLED", "EXPIRED", "DECLINED"].includes(shopifyStatus)) {
+            expectedPlan = "Free Plan";
+            expectedLimit = 2;
+            expectedStatus = "CANCELLED";
+        }
+        // FROZEN: Keep current plan but mark status
+        else if (shopifyStatus === "FROZEN") {
+            expectedStatus = "FROZEN";
+        }
+
+        // Sync if drift detected
+        if (expectedPlan !== localPlan || expectedStatus !== localStatus || expectedLimit !== billingInfo.usageLimit) {
+            console.log(`[Billing Sync] Drift detected for ${shop}: Local(${localPlan}/${localStatus}) vs Shopify(${shopifyPlan}/${shopifyStatus})`);
+            billingInfo = await prisma.billingInfo.update({
+                where: { shop },
+                data: {
+                    planName: expectedPlan,
+                    status: expectedStatus,
+                    usageLimit: expectedLimit,
+                },
+                include: { paymentMethods: true }
+            });
+        }
+    }
+
+    // === Usage Cycle Reset Check ===
+    // Check if 30 days have passed since cycle start and reset usage if needed
+    const now = new Date();
+    const cycleStart = new Date(billingInfo.cycleStartDate);
+    const daysSinceCycleStart = Math.floor((now - cycleStart) / (1000 * 60 * 60 * 24));
+
+    if (daysSinceCycleStart >= 30) {
+        console.log(`[Usage Reset] Cycle expired for ${shop}: ${daysSinceCycleStart} days since ${cycleStart.toISOString()}`);
+        billingInfo = await prisma.billingInfo.update({
+            where: { shop },
+            data: {
+                currentUsage: 0,
+                cycleStartDate: now,
+            },
+            include: { paymentMethods: true }
+        });
+        console.log(`[Usage Reset] Reset usage for ${shop}, new cycle started`);
     }
 
     const isPremium = billingInfo.planName === MONTHLY_PLAN || billingInfo.planName === ENTERPRISE_PLAN;
@@ -246,22 +316,17 @@ export const loader = async ({ request }) => {
     const revenueImpact = totalRevenue;
     const revenueChange = 0.0;
 
-    // Payment method
-    let defaultMethod = billingInfo.paymentMethods.find(m => m.isDefault);
-    if (!defaultMethod && billingInfo.paymentMethods.length > 0) defaultMethod = billingInfo.paymentMethods[0];
-    const paymentMethod = defaultMethod ? {
-        last4: defaultMethod.last4,
-        expiry: defaultMethod.expiry,
-        brand: defaultMethod.brand
-    } : null;
+    // Payment method - No longer handling raw cards, relying on Shopify
+    // We just show active/inactive state based on subscription
+    const paymentStatus = isPremium ? 'Active' : 'Free';
 
     return {
         storeName: shop.split('.')[0],
         shop,
         isEmbedEnabled,
         hasPayment,
-        paymentMethod,
-        allPaymentMethods: billingInfo.paymentMethods || [],
+        isPremium,
+        paymentStatus,
         billingHistory,
         usage: {
             current: billingInfo.currentUsage,
@@ -297,7 +362,7 @@ export const action = async ({ request }) => {
         try {
             await billing.request({
                 plan: targetPlanName,
-                isTest: true,
+                isTest: IS_TEST_MODE,
                 // eslint-disable-next-line no-undef
                 returnUrl: `https://${session.shop}/admin/apps/${process.env.SHOPIFY_API_KEY}/app/dashboard`,
             });
@@ -321,47 +386,31 @@ export const action = async ({ request }) => {
 
     if (actionType === "cancel") {
         try {
-            const subscription = await billing.check({ plans: [MONTHLY_PLAN, ENTERPRISE_PLAN], isTest: true });
+            const subscription = await billing.check({ plans: [MONTHLY_PLAN, ENTERPRISE_PLAN], isTest: IS_TEST_MODE });
             if (subscription.appSubscriptions?.[0]) {
                 await billing.cancel({
                     subscriptionId: subscription.appSubscriptions[0].id,
-                    isTest: true,
+                    isTest: IS_TEST_MODE,
                     prorate: true,
                 });
             }
         } catch (e) {
-            // Ignore
+            console.error("Cancel subscription error:", e);
         }
 
         await prisma.billingInfo.update({
             where: { shop },
-            data: { planName: "Free Plan", usageLimit: 2 }
+            data: { planName: "Free Plan", usageLimit: 2, status: "CANCELLED" }
         });
 
         return { status: "cancelled" };
     }
 
-    if (actionType === "addPaymentMethod") {
-        const brand = formData.get("brand");
-        const last4 = formData.get("last4");
-        const expiry = formData.get("expiry");
-
-        const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
-        if (billingInfo) {
-            await prisma.paymentMethod.create({
-                data: { billingInfoId: billingInfo.id, brand, last4, expiry }
-            });
-        }
-        return { status: "card_added" };
-    }
-
-    if (actionType === "removePaymentMethod") {
-        const methodId = formData.get("methodId");
-        await prisma.paymentMethod.delete({ where: { id: methodId } });
-        return { status: "card_removed" };
-    }
+    // Removed custom payment method handling actions (addPaymentMethod, removePaymentMethod)
+    // as we must rely on Shopify's billing system.
 
     // Apply retention discount - create a new subscription with 20% off for 3 months
+    // Uses replacementBehavior for atomic swap instead of cancel-then-create
     if (actionType === "applyDiscount") {
         const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
         const currentPlan = billingInfo?.planName || MONTHLY_PLAN;
@@ -373,22 +422,13 @@ export const action = async ({ request }) => {
             : "Professional Plan (20% Off)";
 
         try {
-            // Cancel existing subscription first
-            const subscription = await billing.check({ plans: [MONTHLY_PLAN, ENTERPRISE_PLAN], isTest: true });
-            if (subscription.appSubscriptions?.[0]) {
-                await billing.cancel({
-                    subscriptionId: subscription.appSubscriptions[0].id,
-                    isTest: true,
-                    prorate: true,
-                });
-            }
-
             // Create new subscription with discount using GraphQL
+            // Using replacementBehavior: APPLY_IMMEDIATELY for atomic swap
             const { admin } = await authenticate.admin(request);
             const response = await admin.graphql(
                 `#graphql
-                mutation AppSubscriptionCreate($name: String!, $lineItems: [AppSubscriptionLineItemInput!]!, $returnUrl: URL!, $test: Boolean) {
-                    appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test) {
+                mutation AppSubscriptionCreate($name: String!, $lineItems: [AppSubscriptionLineItemInput!]!, $returnUrl: URL!, $test: Boolean, $replacementBehavior: AppSubscriptionReplacementBehavior) {
+                    appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test, replacementBehavior: $replacementBehavior) {
                         userErrors { field message }
                         confirmationUrl
                         appSubscription { id }
@@ -399,7 +439,8 @@ export const action = async ({ request }) => {
                         name: discountedPlanName,
                         // eslint-disable-next-line no-undef
                         returnUrl: `https://${session.shop}/admin/apps/${process.env.SHOPIFY_API_KEY}/app/dashboard`,
-                        test: true,
+                        test: IS_TEST_MODE,
+                        replacementBehavior: "APPLY_IMMEDIATELY",
                         lineItems: [{
                             plan: {
                                 appRecurringPricingDetails: {
@@ -455,7 +496,8 @@ export default function DashboardPage() {
         shop,
         isEmbedEnabled,
         hasPayment,
-        paymentMethod,
+        isPremium,
+        paymentStatus,
         billingHistory,
         usage,
         quickStats,
@@ -755,27 +797,15 @@ export default function DashboardPage() {
                             </div>
                         </div>
 
-                        {paymentMethod ? (
-                            <div className="payment-info-card">
-                                <div className="payment-brand-badge">
-                                    {paymentMethod.brand}
-                                </div>
-                                <div>
-                                    <div className="payment-last4">•••• {paymentMethod.last4}</div>
-                                    <div className="payment-expiry">Expires {paymentMethod.expiry}</div>
-                                </div>
+                        <div className="payment-info-card">
+                            <div className="payment-generic-badge">
+                                <CreditCard size={16} />
                             </div>
-                        ) : hasPayment ? (
-                            <div className="payment-info-card">
-                                <div className="payment-generic-badge">
-                                    <CreditCard size={16} />
-                                </div>
-                                <div>
-                                    <div className="payment-status">{t('dashboard.billing.subscriptionActive')}</div>
-                                    <div className="payment-subtext">{t('dashboard.billing.managedVia')}</div>
-                                </div>
+                            <div>
+                                <div className="payment-status">{isPremium ? t('dashboard.billing.subscriptionActive') : t('dashboard.billing.subscriptionInactive')}</div>
+                                <div className="payment-subtext">{t('dashboard.billing.managedVia')}</div>
                             </div>
-                        ) : null}
+                        </div>
 
                         <div className="billing-info-box">
                             <div className="billing-info-content">
