@@ -9,7 +9,7 @@ embedded = true
 automatically_update_urls_on_dev = true
 
 [webhooks]
-api_version = "2025-01"
+api_version = "2026-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
@@ -19,18 +19,14 @@ api_version = "2025-01"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
-  [[webhooks.subscriptions]]
-  topics = [ "app_subscriptions/update" ]
-  uri = "/webhooks/app/subscriptions_update"
-
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,read_themes,write_files,read_files"
+scopes = "read_files,read_themes,write_files,write_products"
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
 
 [app_proxy]
-url = "https://example.com"
+url = "https://arnold-experiments-cleanup-yorkshire.trycloudflare.com"
 subpath = "v-mirror"
 prefix = "apps"

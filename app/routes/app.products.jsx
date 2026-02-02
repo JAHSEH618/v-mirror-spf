@@ -10,13 +10,10 @@ import {
     Text,
     Badge,
     Thumbnail,
-    EmptyState,
     InlineGrid,
     BlockStack,
-    Box,
-    useIndexResourceState,
-    Icon,
-    Tooltip
+    Card,
+    Icon
 } from "@shopify/polaris";
 import {
     ViewIcon,
@@ -30,14 +27,24 @@ export const loader = async ({ request }) => {
     const { session } = await authenticate.admin(request);
     const shop = session.shop;
 
-    // Execute queries in parallel for better performance
+    const limit = 50; // Increased limit as per request
+    const where = { shop };
+
+    // Hardcoded default sort: TryOns > AddToCarts > Orders > Revenue (descending)
+    const orderBy = [
+        { tryOnCount: 'desc' },
+        { addToCartCount: 'desc' },
+        { orderedCount: 'desc' },
+        { revenue: 'desc' }
+    ];
+
+    // Execute queries
     const [productStats, totalsResult] = await Promise.all([
-        // Get all product stats with pagination support
         prisma.productStat.findMany({
-            where: { shop },
-            orderBy: { tryOnCount: 'desc' }
+            where,
+            orderBy,
+            take: limit,
         }),
-        // Use aggregate for totals (more efficient than fetching all + reducing)
         prisma.productStat.aggregate({
             where: { shop },
             _sum: {
@@ -49,7 +56,7 @@ export const loader = async ({ request }) => {
         })
     ]);
 
-    // Extract totals from aggregate result
+    // Compute totals
     const totals = {
         tryOns: totalsResult._sum.tryOnCount || 0,
         addToCarts: totalsResult._sum.addToCartCount || 0,
@@ -57,6 +64,7 @@ export const loader = async ({ request }) => {
         revenue: totalsResult._sum.revenue || 0
     };
 
+    // Transform data
     const products = productStats.map(p => ({
         id: p.id,
         productId: p.productId,
@@ -69,15 +77,33 @@ export const loader = async ({ request }) => {
         conversion: p.tryOnCount > 0 ? (p.orderedCount / p.tryOnCount) : 0,
         lastTryOn: new Date(p.lastTryOn).toLocaleDateString('en-US', {
             month: 'short', day: 'numeric', year: 'numeric'
-        })
+        }),
+        rawLastTryOn: p.lastTryOn
     }));
 
     return {
-        storeName: shop.split('.')[0],
         products,
         totals
     };
 };
+
+const StatCard = ({ icon, value, label, tone = "base" }) => (
+    <Card>
+        <BlockStack gap="200">
+            <InlineGrid columns="auto 1fr" gap="200" alignItems="center">
+                <div style={{ color: 'var(--p-color-icon-subdued)' }}>
+                    <Icon source={icon} tone="base" />
+                </div>
+                <Text variant="headingLg" as="h3" tone={tone === "success" ? "success" : tone === "caution" ? "critical" : "base"}>
+                    {value}
+                </Text>
+            </InlineGrid>
+            <Text variant="bodyMd" as="p" tone="subdued">
+                {label}
+            </Text>
+        </BlockStack>
+    </Card>
+);
 
 export default function ProductsPage() {
     const { products, totals } = useLoaderData();
@@ -85,32 +111,9 @@ export default function ProductsPage() {
     const navigate = useNavigate();
 
     const resourceName = {
-        singular: 'product',
-        plural: 'products',
+        singular: t('products.product') || 'product',
+        plural: t('products.products') || 'products',
     };
-
-    // IndexTable requires unique IDs for selection state management
-    const { selectedResources, allResourcesSelected, handleSelectionChange } =
-        useIndexResourceState(products);
-
-    // Stats Card Component
-    const StatCard = ({ icon, value, label, tone = "base" }) => (
-        <LegacyCard sectioned>
-            <BlockStack gap="200">
-                <InlineGrid columns="auto 1fr" gap="200" alignItems="center">
-                    <div style={{ color: 'var(--p-color-icon-subdued)' }}>
-                        <Icon source={icon} tone="base" />
-                    </div>
-                    <Text variant="headingLg" as="h3" tone={tone === "success" ? "success" : tone === "caution" ? "critical" : "base"}>
-                        {value}
-                    </Text>
-                </InlineGrid>
-                <Text variant="bodyMd" as="p" tone="subdued">
-                    {label}
-                </Text>
-            </BlockStack>
-        </LegacyCard>
-    );
 
     const rowMarkup = products.map(
         (
@@ -120,7 +123,6 @@ export default function ProductsPage() {
             <IndexTable.Row
                 id={id}
                 key={id}
-                selected={selectedResources.includes(id)}
                 position={index}
             >
                 <IndexTable.Cell>
@@ -135,16 +137,26 @@ export default function ProductsPage() {
                         </Text>
                     </InlineGrid>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{tryOns}</IndexTable.Cell>
-                <IndexTable.Cell>{addToCarts}</IndexTable.Cell>
-                <IndexTable.Cell>{orders}</IndexTable.Cell>
-                <IndexTable.Cell>${revenue.toFixed(2)}</IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Text as="span" numeric>{tryOns}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Text as="span" numeric>{addToCarts}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Text as="span" numeric>{orders}</Text>
+                </IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Text as="span" numeric>${revenue.toFixed(2)}</Text>
+                </IndexTable.Cell>
                 <IndexTable.Cell>
                     <Badge tone={conversion > 0.1 ? "success" : undefined}>
                         {(conversion * 100).toFixed(0)}%
                     </Badge>
                 </IndexTable.Cell>
-                <IndexTable.Cell>{lastTryOn}</IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Text as="span" tone="subdued">{lastTryOn}</Text>
+                </IndexTable.Cell>
             </IndexTable.Row>
         ),
     );
@@ -157,9 +169,8 @@ export default function ProductsPage() {
             subtitle={t('products.subtitle') || "Detailed performance metrics for your try-on products"}
         >
             <Layout>
-                {/* Summary Stats */}
                 <Layout.Section>
-                    <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
+                    <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400" alignItems="stretch">
                         <StatCard
                             icon={ViewIcon}
                             value={totals.tryOns.toLocaleString()}
@@ -170,7 +181,7 @@ export default function ProductsPage() {
                             icon={CartIcon}
                             value={totals.addToCarts.toLocaleString()}
                             label={t('products.totalAddToCarts') || 'Add to Carts'}
-                            tone="base" // Info tone not directly mapped to text, keep base or use logic
+                            tone="base"
                         />
                         <StatCard
                             icon={DeliveryIcon}
@@ -179,46 +190,33 @@ export default function ProductsPage() {
                             tone="success"
                         />
                         <StatCard
-                            icon={CurrencyDollarIcon}
+                            icon={CashDollarIcon}
                             value={`$${totals.revenue.toLocaleString()}`}
                             label={t('products.totalRevenue') || 'Revenue Impact'}
-                            tone="caution" // Mapped to critical usually for money if needed, or base
+                            tone="caution"
                         />
                     </InlineGrid>
                 </Layout.Section>
 
-                {/* Products Table */}
                 <Layout.Section>
                     <LegacyCard>
-                        {products.length > 0 ? (
-                            <IndexTable
-                                resourceName={resourceName}
-                                itemCount={products.length}
-                                selectedItemsCount={
-                                    allResourcesSelected ? 'All' : selectedResources.length
-                                }
-                                onSelectionChange={handleSelectionChange}
-                                headings={[
-                                    { title: t('products.product') || 'Product' },
-                                    { title: t('products.tryOns') || 'Try-Ons' },
-                                    { title: t('products.addToCarts') || 'Add to Cart' },
-                                    { title: t('products.orders') || 'Orders' },
-                                    { title: t('products.revenue') || 'Revenue' },
-                                    { title: t('products.conversion') || 'Conversion' },
-                                    { title: t('products.lastTryOn') || 'Last Try-On' },
-                                ]}
-                                selectable={false} // Disable selection if not needed
-                            >
-                                {rowMarkup}
-                            </IndexTable>
-                        ) : (
-                            <EmptyState
-                                heading={t('products.emptyTitle') || 'No product data yet'}
-                                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                            >
-                                <p>{t('products.emptyText') || 'Product analytics will appear here after customers use the try-on feature.'}</p>
-                            </EmptyState>
-                        )}
+                        <IndexTable
+                            resourceName={resourceName}
+                            itemCount={products.length}
+                            selectedItemsCount="All"
+                            headings={[
+                                { title: t('products.product') || 'Product' },
+                                { title: t('products.tryOns') || 'Try-Ons' },
+                                { title: t('products.addToCarts') || 'Add to Cart' },
+                                { title: t('products.orders') || 'Orders' },
+                                { title: t('products.revenue') || 'Revenue' },
+                                { title: t('products.conversion') || 'Conversion' },
+                                { title: t('products.lastTryOn') || 'Last Try-On' },
+                            ]}
+                            selectable={false}
+                        >
+                            {rowMarkup}
+                        </IndexTable>
                     </LegacyCard>
                 </Layout.Section>
             </Layout>

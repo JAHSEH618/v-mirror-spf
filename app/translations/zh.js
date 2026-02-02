@@ -244,6 +244,7 @@ export const zh = {
     // Products Analytics Page
     products: {
         title: "产品分析",
+        subtitle: "查看您试穿产品的详细性能指标",
         allProducts: "全部产品",
         totalTryOns: "总试穿次数",
         totalAddToCarts: "加入购物车",
@@ -258,6 +259,54 @@ export const zh = {
         lastTryOn: "最后试穿",
         emptyTitle: "暂无产品数据",
         emptyText: "客户使用试穿功能后，产品分析数据将在此显示。",
+        searchPlaceholder: "搜索产品名称",
+        sortBy: "排序依照",
+        sort: {
+            tryOnsDesc: "试穿次数 (高到低)",
+            tryOnsAsc: "试穿次数 (低到高)",
+            revenueDesc: "收入 (高到低)",
+            revenueAsc: "收入 (低到高)",
+            ordersDesc: "订单 (高到低)",
+            ordersAsc: "订单 (低到高)",
+        },
+        pagination: {
+            label: "分页",
+            pageOf: "第 {current} / {total} 页",
+        }
+    },
+
+    // Usage Details Modal
+    usageModal: {
+        title: "用量详情",
+        period: "过去30天",
+        exportReport: "导出报告",
+        tabs: {
+            daily: "每日明细",
+            product: "产品用量",
+        },
+        metrics: {
+            totalTryOns: "总试穿次数",
+            activeProducts: "活跃产品",
+            successRate: "成功率",
+            avgDuration: "平均时长",
+        },
+        dailyHeaders: {
+            date: "日期",
+            tryOns: "试穿次数",
+            uniqueUsers: "独立用户",
+            conversionEst: "预估转化",
+        },
+        productHeaders: {
+            productName: "产品名称",
+            sku: "SKU",
+            totalTryOns: "总试穿次数",
+            activeWidget: "组件激活",
+        },
+        pagination: {
+            previous: "上一页",
+            next: "下一页",
+            pageOf: "第 {page} / {total} 页",
+        },
     },
 };
 

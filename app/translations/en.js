@@ -244,6 +244,7 @@ export const en = {
     // Products Analytics Page
     products: {
         title: "Product Analytics",
+        subtitle: "Detailed performance metrics for your try-on products",
         allProducts: "All Products",
         totalTryOns: "Total Try-Ons",
         totalAddToCarts: "Add to Carts",
@@ -258,5 +259,53 @@ export const en = {
         lastTryOn: "Last Try-On",
         emptyTitle: "No product data yet",
         emptyText: "Product analytics will appear here after customers use the try-on feature.",
+        searchPlaceholder: "Search by product name",
+        sortBy: "Sort by",
+        sort: {
+            tryOnsDesc: "Try-Ons (High to Low)",
+            tryOnsAsc: "Try-Ons (Low to High)",
+            revenueDesc: "Revenue (High to Low)",
+            revenueAsc: "Revenue (Low to High)",
+            ordersDesc: "Orders (High to Low)",
+            ordersAsc: "Orders (Low to High)",
+        },
+        pagination: {
+            label: "Pagination",
+            pageOf: "Page {current} of {total}",
+        }
+    },
+
+    // Usage Details Modal
+    usageModal: {
+        title: "Usage Details",
+        period: "Last 30 Days",
+        exportReport: "Export Report",
+        tabs: {
+            daily: "Daily Breakdown",
+            product: "Usage by Product",
+        },
+        metrics: {
+            totalTryOns: "Total Try-Ons",
+            activeProducts: "Active Products",
+            successRate: "Success Rate",
+            avgDuration: "Avg. Duration",
+        },
+        dailyHeaders: {
+            date: "Date",
+            tryOns: "Try-Ons",
+            uniqueUsers: "Unique Users",
+            conversionEst: "Conversion Est.",
+        },
+        productHeaders: {
+            productName: "Product Name",
+            sku: "SKU",
+            totalTryOns: "Total Try-Ons",
+            activeWidget: "Active Widget",
+        },
+        pagination: {
+            previous: "Previous",
+            next: "Next",
+            pageOf: "Page {page} of {total}",
+        },
     },
 };

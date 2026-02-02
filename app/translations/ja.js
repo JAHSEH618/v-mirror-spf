@@ -243,20 +243,69 @@ export const ja = {
 
     // Products Analytics Page
     products: {
-        title: "商品分析",
+        title: "人気商品",
+        subtitle: "ご試着いただいた製品の詳細なパフォーマンス指標を確認できます",
         allProducts: "全商品",
-        totalTryOns: "総試着数",
-        totalAddToCarts: "カート追加数",
+        totalTryOns: "総試着回数",
+        totalAddToCarts: "カート追加",
         totalOrders: "注文数",
         totalRevenue: "売上影響額",
         product: "商品",
-        tryOns: "試着数",
+        tryOns: "試着回数",
         addToCarts: "カート追加",
         orders: "注文",
         revenue: "売上",
-        conversion: "コンバージョン率",
+        conversion: "コンバージョン",
         lastTryOn: "最終試着日",
         emptyTitle: "商品データがありません",
         emptyText: "お客様が試着機能を使用すると、ここに商品分析が表示されます。",
+        searchPlaceholder: "製品名で検索",
+        sortBy: "並べ替え",
+        sort: {
+            tryOnsDesc: "試着回数 (多い順)",
+            tryOnsAsc: "試着回数 (少ない順)",
+            revenueDesc: "収益 (高い順)",
+            revenueAsc: "収益 (低い順)",
+            ordersDesc: "注文数 (多い順)",
+            ordersAsc: "注文数 (少ない順)",
+        },
+        pagination: {
+            label: "ページネーション",
+            pageOf: "ページ {current} / {total}",
+        }
+    },
+
+    // Usage Details Modal
+    usageModal: {
+        title: "使用状況の詳細",
+        period: "過去30日間",
+        exportReport: "レポートをエクスポート",
+        tabs: {
+            daily: "日次内訳",
+            product: "商品別使用状況",
+        },
+        metrics: {
+            totalTryOns: "総試着数",
+            activeProducts: "アクティブな商品",
+            successRate: "成功率",
+            avgDuration: "平均時間",
+        },
+        dailyHeaders: {
+            date: "日付",
+            tryOns: "試着数",
+            uniqueUsers: "ユニークユーザー",
+            conversionEst: "推定CV",
+        },
+        productHeaders: {
+            productName: "商品名",
+            sku: "SKU",
+            totalTryOns: "総試着数",
+            activeWidget: "ウィジェット稼働",
+        },
+        pagination: {
+            previous: "前へ",
+            next: "次へ",
+            pageOf: "{page} / {total} ページ",
+        },
     },
 };

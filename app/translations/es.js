@@ -244,6 +244,7 @@ export const es = {
     // Products Analytics Page
     products: {
         title: "Análisis de Productos",
+        subtitle: "Métricas detalladas del rendimiento de sus productos probados",
         allProducts: "Todos los Productos",
         totalTryOns: "Total de Pruebas",
         totalAddToCarts: "Añadidos al Carrito",
@@ -258,5 +259,53 @@ export const es = {
         lastTryOn: "Última Prueba",
         emptyTitle: "Sin datos de productos aún",
         emptyText: "Las análisis de productos aparecerán aquí después de que los clientes usen la función de prueba.",
+        searchPlaceholder: "Buscar por nombre del producto",
+        sortBy: "Ordenar por",
+        sort: {
+            tryOnsDesc: "Pruebas (Mayor a menor)",
+            tryOnsAsc: "Pruebas (Menor a mayor)",
+            revenueDesc: "Ingresos (Mayor a menor)",
+            revenueAsc: "Ingresos (Menor a mayor)",
+            ordersDesc: "Pedidos (Mayor a menor)",
+            ordersAsc: "Pedidos (Menor a mayor)",
+        },
+        pagination: {
+            label: "Paginación",
+            pageOf: "Página {current} de {total}",
+        }
+    },
+
+    // Usage Details Modal
+    usageModal: {
+        title: "Detalles de Uso",
+        period: "Últimos 30 Días",
+        exportReport: "Exportar Informe",
+        tabs: {
+            daily: "Desglose Diario",
+            product: "Uso por Producto",
+        },
+        metrics: {
+            totalTryOns: "Total de Pruebas",
+            activeProducts: "Productos Activos",
+            successRate: "Tasa de Éxito",
+            avgDuration: "Duración Promedio",
+        },
+        dailyHeaders: {
+            date: "Fecha",
+            tryOns: "Pruebas",
+            uniqueUsers: "Usuarios Únicos",
+            conversionEst: "Conversión Est.",
+        },
+        productHeaders: {
+            productName: "Nombre del Producto",
+            sku: "SKU",
+            totalTryOns: "Total de Pruebas",
+            activeWidget: "Widget Activo",
+        },
+        pagination: {
+            previous: "Anterior",
+            next: "Siguiente",
+            pageOf: "Página {page} de {total}",
+        },
     },
 };

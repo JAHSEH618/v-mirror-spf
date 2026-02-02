@@ -3,7 +3,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
-import { ThemeProvider } from "../components/ThemeContext";
+import { ThemeProvider, useTheme } from "../components/ThemeContext";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { LanguageProvider } from "../components/LanguageContext";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -21,27 +21,40 @@ export const loader = async ({ request }) => {
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
+// Internal component to consume theme context and render Polaris provider
+function AppContent() {
+  const { theme } = useTheme();
+
+  return (
+    <PolarisAppProvider
+      i18n={translations}
+      features={{ polarisSummerEditions2023: true }}
+      colorScheme={theme === 'dark' ? 'dark' : 'light'}
+    >
+      <NavMenu>
+        <Link to="/app" rel="home">Home</Link>
+        <Link to="/app/dashboard">Dashboard</Link>
+        <Link to="/app/appearance">Appearance</Link>
+      </NavMenu>
+      <div className="top-controls">
+        <LanguageSwitcher />
+        <ThemeToggle />
+      </div>
+      <Outlet />
+    </PolarisAppProvider>
+  );
+}
+
 export default function App() {
   const { apiKey } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
-      <PolarisAppProvider i18n={translations}>
-        <LanguageProvider>
-          <ThemeProvider>
-            <NavMenu>
-              <Link to="/app" rel="home">Home</Link>
-              <Link to="/app/dashboard">Dashboard</Link>
-              <Link to="/app/appearance">Appearance</Link>
-            </NavMenu>
-            <div className="top-controls">
-              <LanguageSwitcher />
-              <ThemeToggle />
-            </div>
-            <Outlet />
-          </ThemeProvider>
-        </LanguageProvider>
-      </PolarisAppProvider>
+      <LanguageProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </LanguageProvider>
     </AppProvider>
   );
 }
@@ -54,4 +67,3 @@ export function ErrorBoundary() {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
-

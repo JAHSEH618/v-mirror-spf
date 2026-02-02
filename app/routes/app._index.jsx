@@ -3,6 +3,24 @@ import { useEffect } from "react";
 import { authenticate, apiVersion } from "../shopify.server";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { useLanguage } from "../components/LanguageContext";
+import {
+  Page,
+  Layout,
+  LegacyCard,
+  CalloutCard,
+  Text,
+  BlockStack,
+  InlineStack,
+  Badge,
+  Button,
+  FooterHelp,
+  Link,
+  Icon
+} from "@shopify/polaris";
+import {
+  CheckIcon,
+  AppsIcon
+} from "@shopify/polaris-icons";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -28,7 +46,7 @@ export const loader = async ({ request }) => {
         // Extract numeric ID from GID (handles both Theme and OnlineStoreTheme formats)
         const themeId = mainThemeId.split('/').pop();
         const response = await fetch(
-          `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
+          `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json&_t=${Date.now()}`,
           {
             headers: {
               "X-Shopify-Access-Token": session.accessToken
@@ -75,112 +93,113 @@ export default function Dashboard() {
     }
   }, [isEmbedEnabled, revalidator]);
 
-  const activeStepId = !isEmbedEnabled ? 2 : 3;
-
   return (
     <DashboardLayout merchantName={shop.split('.')[0]}>
-      <s-box padding="large-300">
-        {/* Hero Section */}
-        <s-box paddingBlockEnd="large-300">
-          <s-stack gap="small">
-            <s-heading>{t('onboarding.title')}</s-heading>
-            <s-paragraph>{t('onboarding.subtitle')}</s-paragraph>
-          </s-stack>
-        </s-box>
-
-        {/* Steps Container */}
-        <s-stack gap="base">
-
+      <Page fullWidth title={t('onboarding.title')} subtitle={t('onboarding.subtitle')}>
+        <Layout>
           {/* Step 1: Install (Completed) */}
-          <s-box padding="base" background="subdued" borderRadius="base">
-            <s-stack direction="inline" gap="base">
-              <s-badge tone="success">✓</s-badge>
-              <s-stack gap="small">
-                <s-stack direction="inline" gap="small">
-                  <s-text>{t('onboarding.step1.label')}</s-text>
-                  <s-badge tone="success">{t('onboarding.status.completed')}</s-badge>
-                </s-stack>
-                <s-heading>{t('onboarding.step1.title')}</s-heading>
-                <s-paragraph>{t('onboarding.step1.desc')}</s-paragraph>
-              </s-stack>
-            </s-stack>
-          </s-box>
+          <Layout.Section>
+            <LegacyCard sectioned>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="400" blockAlign="center">
+                    <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%' }}>
+                      <Icon source={CheckIcon} tone="success" />
+                    </div>
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2">{t('onboarding.step1.title')}</Text>
+                      <Text variant="bodyMd" as="p" tone="subdued">{t('onboarding.step1.desc')}</Text>
+                    </BlockStack>
+                  </InlineStack>
+                  <Badge tone="success">{t('onboarding.status.completed')}</Badge>
+                </InlineStack>
+              </BlockStack>
+            </LegacyCard>
+          </Layout.Section>
 
           {/* Step 2: Enable App Block */}
-          <s-box padding="base" background="subdued" borderRadius="base">
-            <s-stack direction="inline" gap="base">
-              {isEmbedEnabled ? (
-                <s-badge tone="success">✓</s-badge>
-              ) : (
-                <s-badge tone="caution">2</s-badge>
-              )}
-              <s-stack gap="small">
-                <s-stack direction="inline" gap="small">
-                  <s-text>{t('onboarding.step2.label')}</s-text>
-                  {isEmbedEnabled ? (
-                    <s-badge tone="success">{t('onboarding.status.completed')}</s-badge>
-                  ) : (
-                    <s-badge tone="warning">{t('onboarding.status.actionRequired')}</s-badge>
-                  )}
-                </s-stack>
-                <s-heading>{t('onboarding.step2.title')}</s-heading>
-                <s-paragraph>
-                  {isEmbedEnabled
-                    ? t('onboarding.step2.descEnabled')
-                    : t('onboarding.step2.descDisabled')}
-                </s-paragraph>
-                {!isEmbedEnabled && (
-                  <s-box paddingBlockStart="small">
-                    <s-button
-                      variant="primary"
-                      onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
-                    >
-                      {t('onboarding.step2.action')} →
-                    </s-button>
-                  </s-box>
-                )}
-              </s-stack>
-            </s-stack>
-          </s-box>
+          <Layout.Section>
+            {isEmbedEnabled ? (
+              <LegacyCard sectioned>
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <InlineStack gap="400" blockAlign="center">
+                      <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%' }}>
+                        <Icon source={CheckIcon} tone="success" />
+                      </div>
+                      <BlockStack gap="100">
+                        <Text variant="headingMd" as="h2">{t('onboarding.step2.title')}</Text>
+                        <Text variant="bodyMd" as="p" tone="subdued">{t('onboarding.step2.descEnabled')}</Text>
+                      </BlockStack>
+                    </InlineStack>
+                    <Badge tone="success">{t('onboarding.status.completed')}</Badge>
+                  </InlineStack>
+                </BlockStack>
+              </LegacyCard>
+            ) : (
+              <CalloutCard
+                title={t('onboarding.step2.title')}
+                illustration="https://cdn.shopify.com/s/assets/admin/checkout/settings-customizecart-705f57c725ac05be5a34ec20c05b94298cb8afd10aac7bd9c7ad02030f48cfa0.svg"
+                primaryAction={{
+                  content: t('onboarding.step2.action'),
+                  url: `https://${shop}/admin/themes/current/editor?context=apps`,
+                  target: "_blank",
+                }}
+              >
+                <BlockStack gap="200">
+                  <Text variant="bodyMd" as="p">
+                    {t('onboarding.step2.descDisabled')}
+                  </Text>
+                  <InlineStack gap="200">
+                    <Badge tone="attention">{t('onboarding.status.actionRequired')}</Badge>
+                    <Text variant="bodySm" as="span" tone="subdued">
+                      {t('onboarding.step2.label')}
+                    </Text>
+                  </InlineStack>
+                </BlockStack>
+              </CalloutCard>
+            )}
+          </Layout.Section>
 
           {/* Step 3: Go Live */}
-          <s-box padding="base" background="subdued" borderRadius="base">
-            <s-stack direction="inline" gap="base">
-              <s-badge tone={activeStepId === 3 ? "info" : "neutral"}>3</s-badge>
-              <s-stack gap="small">
-                <s-stack direction="inline" gap="small">
-                  <s-text>{t('onboarding.step3.label')}</s-text>
-                  {activeStepId === 3 && <s-badge>{t('onboarding.status.nextStep')}</s-badge>}
-                </s-stack>
-                <s-heading>{t('onboarding.step3.title')}</s-heading>
-                <s-paragraph>{t('onboarding.step3.desc')}</s-paragraph>
-                <s-box paddingBlockStart="small">
-                  <s-button
+          <Layout.Section>
+            <LegacyCard sectioned>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="400" blockAlign="center">
+                    <div style={{
+                      padding: '8px',
+                      background: isEmbedEnabled ? 'var(--p-color-bg-surface-info)' : 'var(--p-color-bg-fill)',
+                      borderRadius: '50%'
+                    }}>
+                      <Icon source={AppsIcon} tone={isEmbedEnabled ? "info" : "base"} />
+                    </div>
+                    <BlockStack gap="100">
+                      <Text variant="headingMd" as="h2" tone={!isEmbedEnabled ? "subdued" : "base"}>{t('onboarding.step3.title')}</Text>
+                      <Text variant="bodyMd" as="p" tone="subdued">{t('onboarding.step3.desc')}</Text>
+                    </BlockStack>
+                  </InlineStack>
+                  <Button
+                    variant="primary"
                     disabled={!isEmbedEnabled}
                     onClick={() => window.open(`https://${shop}`, '_blank')}
                   >
                     {t('onboarding.step3.action')}
-                  </s-button>
-                </s-box>
-              </s-stack>
-            </s-stack>
-          </s-box>
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </LegacyCard>
+          </Layout.Section>
 
-        </s-stack>
-
-        {/* Support Footer */}
-        <s-box paddingBlockStart="large-300">
-          <s-stack gap="small">
-            <s-heading>{t('onboarding.support.title')}</s-heading>
-            <s-stack direction="inline" gap="small">
-              <s-link>{t('onboarding.support.docs')}</s-link>
-              <s-text>•</s-text>
-              <s-link>{t('onboarding.support.contact')}</s-link>
-            </s-stack>
-          </s-stack>
-        </s-box>
-
-      </s-box>
+          <Layout.Section>
+            <FooterHelp>
+              {t('onboarding.support.title')} {' '}
+              <Link url="#">{t('onboarding.support.docs')}</Link> • {' '}
+              <Link url="#">{t('onboarding.support.contact')}</Link>
+            </FooterHelp>
+          </Layout.Section>
+        </Layout>
+      </Page>
     </DashboardLayout>
   );
 }

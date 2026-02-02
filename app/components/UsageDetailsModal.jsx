@@ -1,137 +1,9 @@
 import { useState } from "react";
 // Note: lucide-react removed - using Polaris s-icon and emoji for icons
-
-// Inline Styles
-const styles = {
-    overlay: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9998,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px'
-    },
-    modal: {
-        backgroundColor: 'white',
-        borderRadius: '16px',
-        maxWidth: '900px',
-        width: '100%',
-        height: '80vh',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        zIndex: 9999,
-        position: 'relative',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
-    },
-    header: {
-        padding: '20px 24px',
-        borderBottom: '1px solid #E5E7EB',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-    },
-    title: {
-        fontSize: '18px',
-        fontWeight: 600,
-        color: '#111827',
-        margin: 0
-    },
-    body: {
-        flex: 1,
-        overflowY: 'auto',
-        padding: '24px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px'
-    },
-    metricsGrid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '16px'
-    },
-    metricCard: {
-        padding: '16px',
-        backgroundColor: '#F9FAFB',
-        borderRadius: '8px',
-        border: '1px solid #F3F4F6'
-    },
-    metricLabel: {
-        fontSize: '12px',
-        color: '#6B7280',
-        fontWeight: 500,
-        textTransform: 'uppercase',
-        marginBottom: '8px'
-    },
-    metricValue: {
-        fontSize: '24px',
-        fontWeight: 700,
-        color: '#111827'
-    },
-    tabs: {
-        display: 'flex',
-        borderBottom: '1px solid #E5E7EB',
-        marginBottom: '16px'
-    },
-    tab: {
-        padding: '12px 24px',
-        cursor: 'pointer',
-        fontWeight: 500,
-        fontSize: '14px',
-        borderBottom: '2px solid transparent',
-        color: '#6B7280'
-    },
-    activeTab: {
-        color: '#7C3AED',
-        borderBottomColor: '#7C3AED'
-    },
-    table: {
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: '14px'
-    },
-    th: {
-        textAlign: 'left',
-        padding: '12px 16px',
-        backgroundColor: '#F9FAFB',
-        borderBottom: '1px solid #E5E7EB',
-        color: '#6B7280',
-        fontWeight: 500
-    },
-    td: {
-        padding: '12px 16px',
-        borderBottom: '1px solid #F3F4F6',
-        color: '#374151'
-    },
-    pagination: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: '16px',
-        borderTop: '1px solid #E5E7EB'
-    },
-    btn: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 16px',
-        borderRadius: '6px',
-        border: '1px solid #D1D5DB',
-        backgroundColor: 'white',
-        cursor: 'pointer',
-        fontSize: '14px',
-        fontWeight: 500,
-        color: '#374151'
-    }
-};
+import { useLanguage } from "../components/LanguageContext";
 
 export const UsageDetailsModal = ({ isOpen, onClose }) => {
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState("daily");
     const [page, setPage] = useState(1);
 
@@ -139,10 +11,10 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
 
     // Mock Data
     const metrics = [
-        { label: "Total Try-Ons", value: "842" },
-        { label: "Active Products", value: "24" },
-        { label: "Success Rate", value: "98.5%" },
-        { label: "Avg. Duration", value: "45s" }
+        { label: t('usageModal.metrics.totalTryOns'), value: "842" },
+        { label: t('usageModal.metrics.activeProducts'), value: "24" },
+        { label: t('usageModal.metrics.successRate'), value: "98.5%" },
+        { label: t('usageModal.metrics.avgDuration'), value: "45s" }
     ];
 
     const dailyData = Array.from({ length: 5 }).map((_, i) => ({
@@ -162,78 +34,78 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
     const currentData = activeTab === "daily" ? dailyData : productData;
 
     return (
-        <div style={styles.overlay} onClick={onClose}>
-            <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div className="usage-modal-overlay" onClick={onClose}>
+            <div className="usage-modal" onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
-                <div style={styles.header}>
+                <div className="usage-modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <h2 style={styles.title}>Usage Details</h2>
-                        <span style={{ fontSize: '12px', background: '#F3F4F6', padding: '4px 8px', borderRadius: '4px', color: '#6B7280' }}>Last 30 Days</span>
+                        <h2 className="usage-modal-title">{t('usageModal.title')}</h2>
+                        <span className="usage-modal-period-badge">{t('usageModal.period')}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button style={styles.btn}>
+                    <div className="usage-modal-header-actions">
+                        <button className="usage-modal-btn">
                             <span style={{ marginRight: '4px' }}>⬇️</span>
-                            Export Report
+                            {t('usageModal.exportReport')}
                         </button>
-                        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
+                        <button onClick={onClose} className="usage-modal-close-btn">
                             <s-icon type="x" size="base"></s-icon>
                         </button>
                     </div>
                 </div>
 
                 {/* Body */}
-                <div style={styles.body}>
+                <div className="usage-modal-body">
 
                     {/* Metrics */}
-                    <div style={styles.metricsGrid}>
+                    <div className="usage-modal-metrics-grid">
                         {metrics.map((m, i) => (
-                            <div key={i} style={styles.metricCard}>
-                                <div style={styles.metricLabel}>{m.label}</div>
-                                <div style={styles.metricValue}>{m.value}</div>
+                            <div key={i} className="usage-modal-metric-card">
+                                <div className="usage-modal-metric-label">{m.label}</div>
+                                <div className="usage-modal-metric-value">{m.value}</div>
                             </div>
                         ))}
                     </div>
 
                     {/* Chart Mock */}
-                    <div style={{ ...styles.metricCard, height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: '#9CA3AF' }}>
-                        <span style={{ fontSize: '48px', marginBottom: '12px', opacity: 0.5 }}>📊</span>
-                        <span style={{ fontSize: '14px' }}>Usage Trends Visualization (Mock)</span>
+                    <div className="usage-modal-metric-card usage-modal-chart-mock">
+                        <span className="usage-modal-chart-icon">📊</span>
+                        <span className="usage-modal-chart-label">Usage Trends Visualization (Mock)</span>
                     </div>
 
                     {/* Table Section */}
                     <div>
-                        <div style={styles.tabs}>
-                            <div
-                                style={{ ...styles.tab, ...(activeTab === "daily" ? styles.activeTab : {}) }}
+                        <div className="usage-modal-tabs">
+                            <button
+                                className={`usage-modal-tab ${activeTab === "daily" ? "active" : ""}`}
                                 onClick={() => setActiveTab("daily")}
                             >
-                                Daily Breakdown
-                            </div>
-                            <div
-                                style={{ ...styles.tab, ...(activeTab === "product" ? styles.activeTab : {}) }}
+                                {t('usageModal.tabs.daily')}
+                            </button>
+                            <button
+                                className={`usage-modal-tab ${activeTab === "product" ? "active" : ""}`}
                                 onClick={() => setActiveTab("product")}
                             >
-                                Usage by Product
-                            </div>
+                                {t('usageModal.tabs.product')}
+                            </button>
                         </div>
 
-                        <table style={styles.table}>
+                        <table className="usage-modal-table">
                             <thead>
                                 <tr>
                                     {activeTab === "daily" ? (
                                         <>
-                                            <th style={styles.th}>Date</th>
-                                            <th style={styles.th}>Try-Ons</th>
-                                            <th style={styles.th}>Unique Users</th>
-                                            <th style={styles.th}>Conversion Est.</th>
+                                            <th>{t('usageModal.dailyHeaders.date')}</th>
+                                            <th>{t('usageModal.dailyHeaders.tryOns')}</th>
+                                            <th>{t('usageModal.dailyHeaders.uniqueUsers')}</th>
+                                            <th>{t('usageModal.dailyHeaders.conversionEst')}</th>
                                         </>
                                     ) : (
                                         <>
-                                            <th style={styles.th}>Product Name</th>
-                                            <th style={styles.th}>SKU</th>
-                                            <th style={styles.th}>Total Try-Ons</th>
-                                            <th style={styles.th}>Active Widget</th>
+                                            <th>{t('usageModal.productHeaders.productName')}</th>
+                                            <th>{t('usageModal.productHeaders.sku')}</th>
+                                            <th>{t('usageModal.productHeaders.totalTryOns')}</th>
+                                            <th>{t('usageModal.productHeaders.activeWidget')}</th>
                                         </>
                                     )}
                                 </tr>
@@ -243,22 +115,18 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                                     <tr key={i}>
                                         {activeTab === "daily" ? (
                                             <>
-                                                <td style={styles.td}>{row.date}</td>
-                                                <td style={styles.td}>{row.tryOns}</td>
-                                                <td style={styles.td}>{row.uniqueUsers}</td>
-                                                <td style={styles.td}>{row.conversion}</td>
+                                                <td>{row.date}</td>
+                                                <td>{row.tryOns}</td>
+                                                <td>{row.uniqueUsers}</td>
+                                                <td>{row.conversion}</td>
                                             </>
                                         ) : (
                                             <>
-                                                <td style={{ ...styles.td, fontWeight: 500 }}>{row.name}</td>
-                                                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{row.sku}</td>
-                                                <td style={styles.td}>{row.tryOns}</td>
-                                                <td style={styles.td}>
-                                                    <span style={{
-                                                        padding: '2px 8px', borderRadius: '99px', fontSize: '12px',
-                                                        backgroundColor: row.active === 'Yes' ? '#D1FAE5' : '#F3F4F6',
-                                                        color: row.active === 'Yes' ? '#065F46' : '#6B7280'
-                                                    }}>
+                                                <td className="usage-modal-product-name">{row.name}</td>
+                                                <td className="usage-modal-sku">{row.sku}</td>
+                                                <td>{row.tryOns}</td>
+                                                <td>
+                                                    <span className={`usage-modal-active-badge ${row.active === 'Yes' ? 'yes' : 'no'}`}>
                                                         {row.active}
                                                     </span>
                                                 </td>
@@ -270,22 +138,24 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                         </table>
 
                         {/* Pagination */}
-                        <div style={styles.pagination}>
+                        <div className="usage-modal-pagination">
                             <button
-                                style={{ ...styles.btn, opacity: page === 1 ? 0.5 : 1 }}
+                                className="usage-modal-btn"
                                 disabled={page === 1}
                                 onClick={() => setPage(p => Math.max(1, p - 1))}
                             >
                                 <s-icon type="chevron-left" size="small"></s-icon>
-                                Previous
+                                {t('usageModal.pagination.previous')}
                             </button>
-                            <span style={{ fontSize: '14px', color: '#6B7280' }}>Page {page} of 5</span>
+                            <span className="usage-modal-pagination-info">
+                                {t('usageModal.pagination.pageOf', { page, total: 5 })}
+                            </span>
                             <button
-                                style={{ ...styles.btn, opacity: page === 5 ? 0.5 : 1 }}
+                                className="usage-modal-btn"
                                 disabled={page === 5}
                                 onClick={() => setPage(p => Math.min(5, p + 1))}
                             >
-                                Next
+                                {t('usageModal.pagination.next')}
                                 <s-icon type="chevron-right" size="small"></s-icon>
                             </button>
                         </div>
