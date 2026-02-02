@@ -1006,35 +1006,24 @@
     async function handleGenerate() {
         if (!state.userPhoto) return;
 
+        // D3-3 FIX: Frontend throttling to prevent double-clicks/spam
+        const now = Date.now();
+        if (state.lastGenerateTime && (now - state.lastGenerateTime < 2000)) {
+            console.log('[V-Mirror] request throttled');
+            return;
+        }
+        state.lastGenerateTime = now;
+
         state.viewState = 'loading';
         renderModal();
 
         try {
             const productImage = state.selectedVariant?.featured_image?.src || config.productImage;
 
-            // DEBUG: Log the API URL we are about to hit
+            // ... (rest of setup) ...
+
             const apiUrl = `${config.appProxyUrl}/api/try-on/start`;
-            const pingUrl = `${config.appProxyUrl}/api/try-on/ping`;
-            console.log(`[V-Mirror] Base App Proxy URL: ${config.appProxyUrl}`);
-            console.log(`[V-Mirror] Target API URL: ${apiUrl}`);
-
-            // Test connectivity first
-            try {
-                console.log(`[V-Mirror] Pinging ${pingUrl}...`);
-                const pingRes = await fetch(pingUrl);
-                if (pingRes.ok) {
-                    const pingData = await pingRes.json();
-                    console.log('[V-Mirror] Ping success:', pingData);
-                } else {
-                    console.warn('[V-Mirror] Ping failed:', pingRes.status);
-                }
-            } catch (pingErr) {
-                console.error('[V-Mirror] Ping connection error:', pingErr);
-            }
-
-            // Start try-on generation
-            console.log('[V-Mirror] Starting generation request...');
-            console.log('[V-Mirror] Garment type:', config.garmentType || 'auto-detect');
+            // ...
 
             // Performance tracking
             const perfStart = performance.now();
@@ -1144,14 +1133,32 @@
             console.log('[V-Mirror] API Response:', responseData);
 
             if (!startResponse.ok) {
-                if (responseData && responseData.code === 'LIMIT_EXCEEDED') {
-                    throw new Error(t('limitExceeded'));
+                // D2-3 FIX: Unified Error Handling
+                let errorObj = responseData?.error;
+
+                // Handle legacy format where error is a string
+                if (typeof errorObj === 'string') {
+                    // Check top-level code for legacy
+                    if (responseData.code === 'LIMIT_EXCEEDED') {
+                        throw new Error(t('limitExceeded'));
+                    }
+                    throw new Error(errorObj);
                 }
-                throw new Error(responseData?.error || `${t('failedToGenerate')}: ${startResponse.status}`);
+
+                // Handle new Unified format
+                if (typeof errorObj === 'object') {
+                    if (errorObj.code === 'LIMIT_EXCEEDED') {
+                        throw new Error(t('limitExceeded'));
+                    }
+                    throw new Error(errorObj.message || t('failedToGenerate'));
+                }
+
+                throw new Error(`${t('failedToGenerate')}: ${startResponse.status}`);
             }
 
             if (responseData.error) {
-                throw new Error(responseData.error);
+                const msg = typeof responseData.error === 'object' ? responseData.error.message : responseData.error;
+                throw new Error(msg);
             }
 
             // Legacy JSON handling (if backend falls back or for other models)

@@ -1,4 +1,4 @@
-import { X, Check, Star, Zap, Shield } from "lucide-react";
+// Note: lucide-react removed - using Polaris s-icon and emoji for icons
 import { useLanguage } from "./LanguageContext";
 
 // Inline Styles - Using CSS variables for theme support
@@ -172,7 +172,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                 t('subscription.plans.free.features.support'),
                 t('subscription.plans.free.features.catalog')
             ],
-            icon: <Star size={24} style={{ color: 'var(--text-secondary)' }} />
+            icon: <span style={{ fontSize: '24px' }}>⭐</span>
         },
         {
             id: "professional",
@@ -188,7 +188,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                 t('subscription.plans.professional.features.branding')
             ],
             featured: true,
-            icon: <Zap size={24} style={{ color: 'var(--primary-color)' }} />
+            icon: <span style={{ fontSize: '24px' }}>⚡</span>
         },
         {
             id: "enterprise",
@@ -203,7 +203,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                 t('subscription.plans.enterprise.features.sla'),
                 t('subscription.plans.enterprise.features.manager')
             ],
-            icon: <Shield size={24} style={{ color: 'var(--text-main)' }} />
+            icon: <span style={{ fontSize: '24px' }}>🛡️</span>
         }
     ];
 
@@ -224,7 +224,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
             <div style={styles.modal} onClick={e => e.stopPropagation()}>
 
                 <button style={styles.closeBtn} onClick={onClose} onMouseEnter={e => e.target.style.opacity = '1'} onMouseLeave={e => e.target.style.opacity = '0.7'}>
-                    <X size={24} />
+                    <s-icon type="x" size="base"></s-icon>
                 </button>
 
                 <div style={styles.header}>
@@ -271,7 +271,7 @@ export const UpgradePlanModal = ({ isOpen, onClose, currentPlanName, onUpgrade }
                                 <ul style={styles.features}>
                                     {plan.features.map((f, i) => (
                                         <li key={i} style={styles.featureItem}>
-                                            <Check size={16} style={{ color: isFeatured ? 'var(--primary-color)' : 'var(--g-400)', flexShrink: 0 }} />
+                                            <s-icon type="check" size="small"></s-icon>
                                             {f}
                                         </li>
                                     ))}

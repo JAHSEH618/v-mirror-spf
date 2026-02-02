@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, AlertTriangle, Gift, Check, ChevronRight } from "lucide-react";
+// Note: lucide-react removed - using Polaris s-icon and emoji for icons
 import { useSubmit } from "react-router";
 import { useLanguage } from "./LanguageContext";
 
@@ -173,7 +173,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                         {step === 3 && t('cancelSubscription.step3Title')}
                     </h2>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', opacity: 0.7, transition: 'opacity 0.2s' }} onMouseEnter={e => e.target.style.opacity = '1'} onMouseLeave={e => e.target.style.opacity = '0.7'}>
-                        <X size={24} />
+                        <s-icon type="x" size="base"></s-icon>
                     </button>
                 </div>
 
@@ -229,7 +229,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                         width: '64px', height: '64px', backgroundColor: 'var(--p-100)', borderRadius: '50%', margin: '0 auto 16px',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center'
                                     }}>
-                                        <Gift size={32} color="var(--primary-color)" />
+                                        <span style={{ fontSize: '32px' }}>🎁</span>
                                     </div>
 
                                     <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
@@ -244,7 +244,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                         backgroundColor: 'var(--p-50)', border: '1px solid var(--p-100)', borderRadius: '12px', padding: '16px', marginBottom: '24px'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--primary-hover)', fontWeight: 500 }}>
-                                            <Check size={20} />
+                                            <s-icon type="check" size="base"></s-icon>
                                             {t('cancelSubscription.step2OfferLabel')}
                                         </div>
                                     </div>
@@ -256,7 +256,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                         width: '64px', height: '64px', backgroundColor: '#FEF3C7', borderRadius: '50%', margin: '0 auto 16px',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center'
                                     }}>
-                                        <AlertTriangle size={32} color="#D97706" />
+                                        <span style={{ fontSize: '32px' }}>⚠️</span>
                                     </div>
 
                                     <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>
@@ -289,7 +289,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                 width: '64px', height: '64px', backgroundColor: '#FEE2E2', borderRadius: '50%', margin: '0 auto 16px',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center'
                             }}>
-                                <AlertTriangle size={32} color="#DC2626" />
+                                <span style={{ fontSize: '32px' }}>⚠️</span>
                             </div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
                                 {t('cancelSubscription.step3Confirm')}
@@ -317,7 +317,7 @@ export const CancelSubscriptionModal = ({ isOpen, onClose }) => {
                                 }}
                             >
                                 {t('cancelSubscription.continue')}
-                                <ChevronRight size={16} />
+                                <s-icon type="chevron-right" size="small"></s-icon>
                             </button>
                         </>
                     )}

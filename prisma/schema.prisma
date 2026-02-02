@@ -8,9 +8,10 @@ generator client {
 // Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+// P0: Migrated from SQLite to PostgreSQL for production scalability
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -195,4 +196,18 @@ model UploadTask {
   @@index([taskId])
   @@index([shop, status])
   @@index([createdAt])
+}
+
+// P1 FIX: Webhook idempotency tracking
+// Prevents duplicate processing when Shopify retries webhook delivery
+model WebhookEvent {
+  id        String   @id @default(uuid())
+  webhookId String   @unique  // Shopify Webhook ID from X-Shopify-Webhook-Id header
+  topic     String             // e.g., "ORDERS_CREATE", "APP_SUBSCRIPTIONS_UPDATE"
+  shop      String
+  processed Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([shop, topic])
+  @@index([createdAt])  // For cleanup of old records
 }

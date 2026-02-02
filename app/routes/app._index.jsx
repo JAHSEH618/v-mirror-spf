@@ -3,11 +3,6 @@ import { useEffect } from "react";
 import { authenticate, apiVersion } from "../shopify.server";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { useLanguage } from "../components/LanguageContext";
-import adminStyles from "../styles/admin.css?url";
-
-export const links = () => [
-  { rel: "stylesheet", href: adminStyles },
-];
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -84,110 +79,108 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout merchantName={shop.split('.')[0]}>
-      <div className="onboarding-page-layout">
-
+      <s-box padding="large-300">
         {/* Hero Section */}
-        <div className="onboarding-hero">
-          <h1 className="hero-title">{t('onboarding.title')}</h1>
-          <p className="hero-subtitle">{t('onboarding.subtitle')}</p>
-        </div>
+        <s-box paddingBlockEnd="large-300">
+          <s-stack gap="small">
+            <s-heading>{t('onboarding.title')}</s-heading>
+            <s-paragraph>{t('onboarding.subtitle')}</s-paragraph>
+          </s-stack>
+        </s-box>
 
         {/* Steps Container */}
-        <div className="onboarding-steps-container">
+        <s-stack gap="base">
 
           {/* Step 1: Install (Completed) */}
-          <div className="onboarding-step-card completed">
-            <div className="step-icon-box">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <div className="step-content">
-              <div className="step-top">
-                <span className="step-label">{t('onboarding.step1.label')}</span>
-                <span className="status-badge success">{t('onboarding.status.completed')}</span>
-              </div>
-              <h3 className="step-heading">{t('onboarding.step1.title')}</h3>
-              <p className="step-desc">{t('onboarding.step1.desc')}</p>
-            </div>
-          </div>
+          <s-box padding="base" background="subdued" borderRadius="base">
+            <s-stack direction="inline" gap="base">
+              <s-badge tone="success">✓</s-badge>
+              <s-stack gap="small">
+                <s-stack direction="inline" gap="small">
+                  <s-text>{t('onboarding.step1.label')}</s-text>
+                  <s-badge tone="success">{t('onboarding.status.completed')}</s-badge>
+                </s-stack>
+                <s-heading>{t('onboarding.step1.title')}</s-heading>
+                <s-paragraph>{t('onboarding.step1.desc')}</s-paragraph>
+              </s-stack>
+            </s-stack>
+          </s-box>
 
           {/* Step 2: Enable App Block */}
-          <div className={`onboarding-step-card ${activeStepId === 2 ? 'active' : 'completed'}`}>
-            <div className="step-icon-box">
+          <s-box padding="base" background="subdued" borderRadius="base">
+            <s-stack direction="inline" gap="base">
               {isEmbedEnabled ? (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
+                <s-badge tone="success">✓</s-badge>
               ) : (
-                <span>2</span>
+                <s-badge tone="caution">2</s-badge>
               )}
-            </div>
-            <div className="step-content">
-              <div className="step-top">
-                <span className="step-label">{t('onboarding.step2.label')}</span>
-                {isEmbedEnabled ? (
-                  <span className="status-badge success">{t('onboarding.status.completed')}</span>
-                ) : (
-                  <span className="status-badge action">{t('onboarding.status.actionRequired')}</span>
+              <s-stack gap="small">
+                <s-stack direction="inline" gap="small">
+                  <s-text>{t('onboarding.step2.label')}</s-text>
+                  {isEmbedEnabled ? (
+                    <s-badge tone="success">{t('onboarding.status.completed')}</s-badge>
+                  ) : (
+                    <s-badge tone="warning">{t('onboarding.status.actionRequired')}</s-badge>
+                  )}
+                </s-stack>
+                <s-heading>{t('onboarding.step2.title')}</s-heading>
+                <s-paragraph>
+                  {isEmbedEnabled
+                    ? t('onboarding.step2.descEnabled')
+                    : t('onboarding.step2.descDisabled')}
+                </s-paragraph>
+                {!isEmbedEnabled && (
+                  <s-box paddingBlockStart="small">
+                    <s-button
+                      variant="primary"
+                      onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
+                    >
+                      {t('onboarding.step2.action')} →
+                    </s-button>
+                  </s-box>
                 )}
-              </div>
-              <h3 className="step-heading">{t('onboarding.step2.title')}</h3>
-              <p className="step-desc">
-                {isEmbedEnabled
-                  ? t('onboarding.step2.descEnabled')
-                  : t('onboarding.step2.descDisabled')}
-              </p>
-              {!isEmbedEnabled && (
-                <div className="step-actions">
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
-                  >
-                    {t('onboarding.step2.action')} &rarr;
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+              </s-stack>
+            </s-stack>
+          </s-box>
 
           {/* Step 3: Go Live */}
-          <div className={`onboarding-step-card ${activeStepId === 3 ? 'active' : ''}`}>
-            <div className="step-icon-box">
-              <span>3</span>
-            </div>
-            <div className="step-content">
-              <div className="step-top">
-                <span className="step-label">{t('onboarding.step3.label')}</span>
-                {activeStepId === 3 && <span className="status-badge pending">{t('onboarding.status.nextStep')}</span>}
-              </div>
-              <h3 className="step-heading">{t('onboarding.step3.title')}</h3>
-              <p className="step-desc">{t('onboarding.step3.desc')}</p>
-              <div className="step-actions">
-                <button
-                  className="btn btn-secondary"
-                  disabled={!isEmbedEnabled}
-                  onClick={() => window.open(`https://${shop}`, '_blank')}
-                >
-                  {t('onboarding.step3.action')}
-                </button>
-              </div>
-            </div>
-          </div>
+          <s-box padding="base" background="subdued" borderRadius="base">
+            <s-stack direction="inline" gap="base">
+              <s-badge tone={activeStepId === 3 ? "info" : "neutral"}>3</s-badge>
+              <s-stack gap="small">
+                <s-stack direction="inline" gap="small">
+                  <s-text>{t('onboarding.step3.label')}</s-text>
+                  {activeStepId === 3 && <s-badge>{t('onboarding.status.nextStep')}</s-badge>}
+                </s-stack>
+                <s-heading>{t('onboarding.step3.title')}</s-heading>
+                <s-paragraph>{t('onboarding.step3.desc')}</s-paragraph>
+                <s-box paddingBlockStart="small">
+                  <s-button
+                    disabled={!isEmbedEnabled}
+                    onClick={() => window.open(`https://${shop}`, '_blank')}
+                  >
+                    {t('onboarding.step3.action')}
+                  </s-button>
+                </s-box>
+              </s-stack>
+            </s-stack>
+          </s-box>
 
-        </div>
+        </s-stack>
 
         {/* Support Footer */}
-        <div className="onboarding-support">
-          <h3>{t('onboarding.support.title')}</h3>
-          <div className="support-links">
-            <a href="#" className="support-link">{t('onboarding.support.docs')}</a>
-            <span className="divider">•</span>
-            <a href="#" className="support-link">{t('onboarding.support.contact')}</a>
-          </div>
-        </div>
+        <s-box paddingBlockStart="large-300">
+          <s-stack gap="small">
+            <s-heading>{t('onboarding.support.title')}</s-heading>
+            <s-stack direction="inline" gap="small">
+              <s-link>{t('onboarding.support.docs')}</s-link>
+              <s-text>•</s-text>
+              <s-link>{t('onboarding.support.contact')}</s-link>
+            </s-stack>
+          </s-stack>
+        </s-box>
 
-      </div>
+      </s-box>
     </DashboardLayout>
   );
 }

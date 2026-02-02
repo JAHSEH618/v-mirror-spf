@@ -1,20 +1,30 @@
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { authenticate } from "../shopify.server";
-import { DashboardLayout } from "../components/DashboardLayout";
 import { useLanguage } from "../components/LanguageContext";
 import prisma from "../db.server";
-import adminStyles from "../styles/admin.css?url";
 import {
-    ArrowLeft,
-    ShoppingCart,
-    Package,
-    DollarSign,
-    Eye
-} from 'lucide-react';
-
-export const links = () => [
-    { rel: "stylesheet", href: adminStyles },
-];
+    Page,
+    Layout,
+    LegacyCard,
+    IndexTable,
+    Text,
+    Badge,
+    Thumbnail,
+    EmptyState,
+    InlineGrid,
+    BlockStack,
+    Box,
+    useIndexResourceState,
+    Icon,
+    Tooltip
+} from "@shopify/polaris";
+import {
+    ViewIcon,
+    CartIcon,
+    DeliveryIcon,
+    CashDollarIcon,
+    ImageIcon
+} from "@shopify/polaris-icons";
 
 export const loader = async ({ request }) => {
     const { session } = await authenticate.admin(request);
@@ -70,132 +80,148 @@ export const loader = async ({ request }) => {
 };
 
 export default function ProductsPage() {
-    const { storeName, products, totals } = useLoaderData();
+    const { products, totals } = useLoaderData();
     const { t } = useLanguage();
+    const navigate = useNavigate();
+
+    const resourceName = {
+        singular: 'product',
+        plural: 'products',
+    };
+
+    // IndexTable requires unique IDs for selection state management
+    const { selectedResources, allResourcesSelected, handleSelectionChange } =
+        useIndexResourceState(products);
+
+    // Stats Card Component
+    const StatCard = ({ icon, value, label, tone = "base" }) => (
+        <LegacyCard sectioned>
+            <BlockStack gap="200">
+                <InlineGrid columns="auto 1fr" gap="200" alignItems="center">
+                    <div style={{ color: 'var(--p-color-icon-subdued)' }}>
+                        <Icon source={icon} tone="base" />
+                    </div>
+                    <Text variant="headingLg" as="h3" tone={tone === "success" ? "success" : tone === "caution" ? "critical" : "base"}>
+                        {value}
+                    </Text>
+                </InlineGrid>
+                <Text variant="bodyMd" as="p" tone="subdued">
+                    {label}
+                </Text>
+            </BlockStack>
+        </LegacyCard>
+    );
+
+    const rowMarkup = products.map(
+        (
+            { id, title, image, tryOns, addToCarts, orders, revenue, conversion, lastTryOn },
+            index,
+        ) => (
+            <IndexTable.Row
+                id={id}
+                key={id}
+                selected={selectedResources.includes(id)}
+                position={index}
+            >
+                <IndexTable.Cell>
+                    <InlineGrid columns="auto 1fr" gap="300" alignItems="center">
+                        <Thumbnail
+                            source={image || ImageIcon}
+                            alt={title}
+                            size="small"
+                        />
+                        <Text variant="bodyMd" fontWeight="bold" as="span">
+                            {title}
+                        </Text>
+                    </InlineGrid>
+                </IndexTable.Cell>
+                <IndexTable.Cell>{tryOns}</IndexTable.Cell>
+                <IndexTable.Cell>{addToCarts}</IndexTable.Cell>
+                <IndexTable.Cell>{orders}</IndexTable.Cell>
+                <IndexTable.Cell>${revenue.toFixed(2)}</IndexTable.Cell>
+                <IndexTable.Cell>
+                    <Badge tone={conversion > 0.1 ? "success" : undefined}>
+                        {(conversion * 100).toFixed(0)}%
+                    </Badge>
+                </IndexTable.Cell>
+                <IndexTable.Cell>{lastTryOn}</IndexTable.Cell>
+            </IndexTable.Row>
+        ),
+    );
 
     return (
-        <DashboardLayout merchantName={storeName}>
-            <div className="products-page">
-                {/* Header */}
-                <div className="products-header">
-                    <Link to="/app/dashboard" className="products-back-link">
-                        <ArrowLeft size={16} />
-                        {t('common.back') || 'Back'}
-                    </Link>
-                    <h1 className="products-title">{t('products.title') || 'Product Analytics'}</h1>
-                </div>
-
+        <Page
+            title={t('products.title') || 'Product Analytics'}
+            backAction={{ content: t('common.back') || 'Back', onAction: () => navigate("/app/dashboard") }}
+            fullWidth
+            subtitle={t('products.subtitle') || "Detailed performance metrics for your try-on products"}
+        >
+            <Layout>
                 {/* Summary Stats */}
-                <div className="products-stats-grid">
-                    <div className="products-stat-card">
-                        <div className="products-stat-icon purple">
-                            <Eye size={20} color="#7C3AED" />
-                        </div>
-                        <div className="products-stat-value">{totals.tryOns.toLocaleString()}</div>
-                        <div className="products-stat-label">{t('products.totalTryOns') || 'Total Try-Ons'}</div>
-                    </div>
-                    <div className="products-stat-card">
-                        <div className="products-stat-icon blue">
-                            <ShoppingCart size={20} color="#3B82F6" />
-                        </div>
-                        <div className="products-stat-value">{totals.addToCarts.toLocaleString()}</div>
-                        <div className="products-stat-label">{t('products.totalAddToCarts') || 'Add to Carts'}</div>
-                    </div>
-                    <div className="products-stat-card">
-                        <div className="products-stat-icon green">
-                            <Package size={20} color="#10B981" />
-                        </div>
-                        <div className="products-stat-value">{totals.orders.toLocaleString()}</div>
-                        <div className="products-stat-label">{t('products.totalOrders') || 'Orders'}</div>
-                    </div>
-                    <div className="products-stat-card">
-                        <div className="products-stat-icon yellow">
-                            <DollarSign size={20} color="#F59E0B" />
-                        </div>
-                        <div className="products-stat-value">${totals.revenue.toLocaleString()}</div>
-                        <div className="products-stat-label">{t('products.totalRevenue') || 'Revenue Impact'}</div>
-                    </div>
-                </div>
+                <Layout.Section>
+                    <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400">
+                        <StatCard
+                            icon={ViewIcon}
+                            value={totals.tryOns.toLocaleString()}
+                            label={t('products.totalTryOns') || 'Total Try-Ons'}
+                            tone="success"
+                        />
+                        <StatCard
+                            icon={CartIcon}
+                            value={totals.addToCarts.toLocaleString()}
+                            label={t('products.totalAddToCarts') || 'Add to Carts'}
+                            tone="base" // Info tone not directly mapped to text, keep base or use logic
+                        />
+                        <StatCard
+                            icon={DeliveryIcon}
+                            value={totals.orders.toLocaleString()}
+                            label={t('products.totalOrders') || 'Orders'}
+                            tone="success"
+                        />
+                        <StatCard
+                            icon={CurrencyDollarIcon}
+                            value={`$${totals.revenue.toLocaleString()}`}
+                            label={t('products.totalRevenue') || 'Revenue Impact'}
+                            tone="caution" // Mapped to critical usually for money if needed, or base
+                        />
+                    </InlineGrid>
+                </Layout.Section>
 
                 {/* Products Table */}
-                <div className="products-table-card">
-                    <div className="products-table-header">
-                        <h2 className="products-table-title">
-                            {t('products.allProducts') || 'All Products'} ({products.length})
-                        </h2>
-                    </div>
-
-                    {products.length > 0 ? (
-                        <div className="products-table-scroll">
-                            <table className="products-table">
-                                <thead>
-                                    <tr>
-                                        <th>{t('products.product') || 'Product'}</th>
-                                        <th>{t('products.tryOns') || 'Try-Ons'}</th>
-                                        <th>{t('products.addToCarts') || 'Add to Cart'}</th>
-                                        <th>{t('products.orders') || 'Orders'}</th>
-                                        <th>{t('products.revenue') || 'Revenue'}</th>
-                                        <th style={{ minWidth: '140px' }}>{t('products.conversion') || 'Conversion'}</th>
-                                        <th>{t('products.lastTryOn') || 'Last Try-On'}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {products.map((product) => (
-                                        <tr key={product.id}>
-                                            <td>
-                                                <div className="products-product-cell">
-                                                    {product.image ? (
-                                                        <img
-                                                            src={product.image}
-                                                            alt={product.title}
-                                                            className="products-product-image"
-                                                        />
-                                                    ) : (
-                                                        <div className="products-product-icon">
-                                                            <Eye size={20} />
-                                                        </div>
-                                                    )}
-                                                    <span className="products-product-title">{product.title}</span>
-                                                </div>
-                                            </td>
-                                            <td>{product.tryOns}</td>
-                                            <td>{product.addToCarts}</td>
-                                            <td>{product.orders}</td>
-                                            <td>${product.revenue.toFixed(2)}</td>
-                                            <td>
-                                                <div className="products-conversion-bar">
-                                                    <div className="products-bar-track">
-                                                        <div
-                                                            className="products-bar-fill"
-                                                            style={{ width: `${Math.min(product.conversion * 100, 100)}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="products-conversion-value">
-                                                        {(product.conversion * 100).toFixed(0)}%
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td>{product.lastTryOn}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="products-empty-state">
-                            <div className="products-empty-icon">
-                                <Eye size={28} />
-                            </div>
-                            <div className="products-empty-title">
-                                {t('products.emptyTitle') || 'No product data yet'}
-                            </div>
-                            <div className="products-empty-text">
-                                {t('products.emptyText') || 'Product analytics will appear here after customers use the try-on feature.'}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </DashboardLayout>
+                <Layout.Section>
+                    <LegacyCard>
+                        {products.length > 0 ? (
+                            <IndexTable
+                                resourceName={resourceName}
+                                itemCount={products.length}
+                                selectedItemsCount={
+                                    allResourcesSelected ? 'All' : selectedResources.length
+                                }
+                                onSelectionChange={handleSelectionChange}
+                                headings={[
+                                    { title: t('products.product') || 'Product' },
+                                    { title: t('products.tryOns') || 'Try-Ons' },
+                                    { title: t('products.addToCarts') || 'Add to Cart' },
+                                    { title: t('products.orders') || 'Orders' },
+                                    { title: t('products.revenue') || 'Revenue' },
+                                    { title: t('products.conversion') || 'Conversion' },
+                                    { title: t('products.lastTryOn') || 'Last Try-On' },
+                                ]}
+                                selectable={false} // Disable selection if not needed
+                            >
+                                {rowMarkup}
+                            </IndexTable>
+                        ) : (
+                            <EmptyState
+                                heading={t('products.emptyTitle') || 'No product data yet'}
+                                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+                            >
+                                <p>{t('products.emptyText') || 'Product analytics will appear here after customers use the try-on feature.'}</p>
+                            </EmptyState>
+                        )}
+                    </LegacyCard>
+                </Layout.Section>
+            </Layout>
+        </Page>
     );
 }

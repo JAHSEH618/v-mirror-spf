@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Globe } from "lucide-react";
+// Note: lucide-react removed - using emoji for icons
 import { useLanguage } from "./LanguageContext";
 import { languages } from "../translations";
 
@@ -29,7 +29,7 @@ export function LanguageSwitcher() {
                 aria-label="Select language"
                 type="button"
             >
-                <Globe size={18} />
+                <span style={{ fontSize: '18px' }}>🌐</span>
                 <span className="language-code">{currentLanguage?.code.toUpperCase()}</span>
             </button>
 

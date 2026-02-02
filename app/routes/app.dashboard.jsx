@@ -5,16 +5,7 @@ import { DashboardLayout } from "../components/DashboardLayout";
 import { useLanguage } from "../components/LanguageContext";
 import prisma from "../db.server";
 import adminStyles from "../styles/admin.css?url";
-import {
-    TrendingUp,
-    TrendingDown,
-    Eye,
-    FileText,
-    Download,
-    CreditCard,
-    ExternalLink,
-    Loader2
-} from 'lucide-react';
+// Note: lucide-react removed - using Polaris s-icon and emoji for icons
 import { CancelSubscriptionModal } from "../components/CancelSubscriptionModal";
 import { UpgradePlanModal } from "../components/UpgradePlanModal";
 
@@ -701,7 +692,7 @@ export default function DashboardPage() {
                         className="btn btn-install"
                         onClick={() => window.open(`https://${shop}/admin/themes/current/editor?context=apps`, '_blank')}
                     >
-                        <FileText size={16} />
+                        <s-icon type="file" size="small"></s-icon>
                         View Installation Guide
                     </button>
                 )}
@@ -790,16 +781,16 @@ export default function DashboardPage() {
                                     className="view-all-btn"
                                     style={{ display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
                                 >
-                                    <CreditCard size={14} />
+                                    <s-icon type="credit-card" size="small"></s-icon>
                                     {t('dashboard.billing.shopifySettings')}
-                                    <ExternalLink size={12} />
+                                    <s-icon type="link" size="small"></s-icon>
                                 </a>
                             </div>
                         </div>
 
                         <div className="payment-info-card">
                             <div className="payment-generic-badge">
-                                <CreditCard size={16} />
+                                <s-icon type="credit-card" size="small"></s-icon>
                             </div>
                             <div>
                                 <div className="payment-status">{isPremium ? t('dashboard.billing.subscriptionActive') : t('dashboard.billing.subscriptionInactive')}</div>
@@ -810,7 +801,7 @@ export default function DashboardPage() {
                         <div className="billing-info-box">
                             <div className="billing-info-content">
                                 <div className="billing-info-icon">
-                                    <FileText size={20} />
+                                    <s-icon type="file" size="base"></s-icon>
                                 </div>
                                 <div>
                                     <h4 className="billing-info-title">{t('dashboard.billing.invoicesTitle')}</h4>
@@ -840,7 +831,7 @@ export default function DashboardPage() {
                             <div className="stat-header">
                                 <span className="stat-value">{quickStats.totalTryOns.value.toLocaleString()}</span>
                                 <span className={`stat-change ${quickStats.totalTryOns.change >= 0 ? 'positive' : 'negative'}`}>
-                                    {quickStats.totalTryOns.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {quickStats.totalTryOns.change >= 0 ? '↑' : '↓'}
                                     {formatChange(quickStats.totalTryOns.change)}
                                 </span>
                             </div>
@@ -851,7 +842,7 @@ export default function DashboardPage() {
                             <div className="stat-header">
                                 <span className="stat-value">{quickStats.uniqueVisitors.value.toLocaleString()}</span>
                                 <span className={`stat-change ${quickStats.uniqueVisitors.change >= 0 ? 'positive' : 'negative'}`}>
-                                    {quickStats.uniqueVisitors.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {quickStats.uniqueVisitors.change >= 0 ? '↑' : '↓'}
                                     {formatChange(quickStats.uniqueVisitors.change)}
                                 </span>
                             </div>
@@ -862,7 +853,7 @@ export default function DashboardPage() {
                             <div className="stat-header">
                                 <span className="stat-value">{(quickStats.conversionRate.value * 100).toFixed(1)}%</span>
                                 <span className={`stat-change ${quickStats.conversionRate.change >= 0 ? 'positive' : 'negative'}`}>
-                                    {quickStats.conversionRate.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {quickStats.conversionRate.change >= 0 ? '↑' : '↓'}
                                     {formatChange(quickStats.conversionRate.change)}
                                 </span>
                             </div>
@@ -873,7 +864,7 @@ export default function DashboardPage() {
                             <div className="stat-header">
                                 <span className="stat-value">${quickStats.revenueImpact.value.toLocaleString()}</span>
                                 <span className={`stat-change ${quickStats.revenueImpact.change >= 0 ? 'positive' : 'negative'}`}>
-                                    {quickStats.revenueImpact.change >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    {quickStats.revenueImpact.change >= 0 ? '↑' : '↓'}
                                     {formatChange(quickStats.revenueImpact.change)}
                                 </span>
                             </div>
@@ -913,7 +904,7 @@ export default function DashboardPage() {
                                                     />
                                                 ) : (
                                                     <div className={`product-icon product-icon-${index % 4}`}>
-                                                        <Eye size={18} />
+                                                        <s-icon type="view" size="base"></s-icon>
                                                     </div>
                                                 )}
                                                 <span className="product-name">{product.name}</span>
@@ -1150,7 +1141,7 @@ export default function DashboardPage() {
                 </div>
                 {(!usage.deviceStats || usage.deviceStats.length === 0) && (
                     <div className="device-stats-empty-banner">
-                        <Eye size={20} style={{ opacity: 0.5 }} />
+                        <s-icon type="view" size="base"></s-icon>
                         <span>{t('dashboard.deviceDistribution.noData')}</span>
                     </div>
                 )}

@@ -1,4 +1,4 @@
-import { Moon, Sun } from "lucide-react";
+// Note: lucide-react removed - using emoji for icons
 import { useTheme } from "./ThemeContext";
 
 export function ThemeToggle() {
@@ -12,16 +12,17 @@ export function ThemeToggle() {
             type="button"
         >
             <div className="toggle-track">
-                <Sun className="icon-sun" />
-                <Moon className="icon-moon" />
+                <span className="icon-sun">☀️</span>
+                <span className="icon-moon">🌙</span>
             </div>
             <div className="toggle-thumb">
                 {theme === "light" ? (
-                    <Sun className="thumb-icon" strokeWidth={2.5} />
+                    <span className="thumb-icon">☀️</span>
                 ) : (
-                    <Moon className="thumb-icon" strokeWidth={2.5} />
+                    <span className="thumb-icon">🌙</span>
                 )}
             </div>
         </button>
     );
 }
+

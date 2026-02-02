@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { webhookResponse } from "../utils/responses.server";
 
 export const action = async ({ request }) => {
     const { topic, shop, session, admin, payload } = await authenticate.webhook(request);
@@ -8,6 +9,32 @@ export const action = async ({ request }) => {
         // The invalid signature error is handled by the authenticate.webhook method.
         // So this really only happens if the webhook is not an admin webhook.
         throw new Response();
+    }
+
+    // P1 FIX: Webhook idempotency check
+    // Shopify may retry webhooks, so we track processed webhookIds to prevent duplicate handling
+    const webhookId = request.headers.get("X-Shopify-Webhook-Id");
+    if (webhookId) {
+        try {
+            // Use upsert to atomically check and record
+            const existing = await prisma.webhookEvent.findUnique({ where: { webhookId } });
+            if (existing) {
+                console.log(`[Webhook] Duplicate ${topic} webhook ${webhookId} for ${shop}, skipping`);
+                return webhookResponse('duplicate');
+            }
+            // Record this webhook as being processed
+            await prisma.webhookEvent.create({
+                data: { webhookId, topic, shop }
+            });
+        } catch (idempotencyError) {
+            // If unique constraint violation, another process already handled it
+            if (idempotencyError.code === 'P2002') {
+                console.log(`[Webhook] Race condition on ${topic} webhook ${webhookId}, skipping`);
+                return webhookResponse('duplicate');
+            }
+            console.error("[Webhook] Idempotency check error:", idempotencyError.message);
+            // Continue processing if idempotency check fails (better than dropping webhook)
+        }
     }
 
     // The topics handled here are:
@@ -103,5 +130,5 @@ export const action = async ({ request }) => {
         }
     }
 
-    return new Response("Webhook processed", { status: 200 });
+    return webhookResponse('success', "Webhook processed");
 };

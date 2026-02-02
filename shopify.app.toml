@@ -31,6 +31,6 @@ scopes = "write_products,read_themes,write_files,read_files"
 redirect_urls = [ "https://example.com/api/auth" ]
 
 [app_proxy]
-url = "https://atm-publishers-acrobat-orchestra.trycloudflare.com"
+url = "https://example.com"
 subpath = "v-mirror"
 prefix = "apps"

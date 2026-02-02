@@ -1,6 +1,8 @@
 /* eslint-disable no-undef */
 import prisma from "../db.server";
 import { authenticate, unauthenticated } from "../shopify.server";
+import { getRedis, getHealthyRedis, REDIS_KEYS, isRedisHealthy } from "../redis.server";
+import { createErrorResponse, ErrorCodes } from "../utils/responses.server";
 
 /**
  * Google Vertex AI Virtual Try-On API
@@ -55,94 +57,87 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "Content-Type"
 };
 
-// OPTIMIZATION 2: Google Access Token Caching
-let cachedAccessToken = null;
-let tokenExpiryTime = 0;
+// P0: Removed in-memory token caching - now using Redis
+// Token caching moved to getAccessToken() function with Redis support
 
-// OPTIMIZATION 5: Rate Limiting (database-backed for distributed deployments)
-// P1 FIX: Use database-backed rate limiting instead of in-memory for multi-instance support
-const rateLimitStore = new Map(); // In-memory cache layer for performance
-
+// P0: Rate Limiting with Redis for distributed deployments
+// Fallback to database query if Redis is unavailable
 async function checkRateLimit(shop, maxRequests = 100, windowMs = 60000) {
     const now = Date.now();
-    const windowStart = new Date(now - windowMs);
+    const key = REDIS_KEYS.RATE_LIMIT(shop);
 
-    // Check in-memory cache first for performance
-    const cached = rateLimitStore.get(shop);
-    if (cached && now < cached.resetTime) {
-        cached.count++;
-        const allowed = cached.count <= maxRequests;
-        return {
-            allowed,
-            remaining: Math.max(0, maxRequests - cached.count),
-            resetTime: cached.resetTime
-        };
-    }
-
-    // Fallback: Query database for rate limit state (distributed-safe)
     try {
-        const recentEvents = await prisma.tryOnEvent.count({
-            where: {
-                shop,
-                createdAt: { gte: windowStart }
-            }
-        });
+        const redis = getRedis();
 
-        const resetTime = now + windowMs;
-        const count = recentEvents + 1;
+        // Use Redis INCR for atomic counting
+        const current = await redis.incr(key);
 
-        // Update cache
-        rateLimitStore.set(shop, { count, resetTime });
-
-        return {
-            allowed: count <= maxRequests,
-            remaining: Math.max(0, maxRequests - count),
-            resetTime
-        };
-    } catch (dbError) {
-        console.error("[Rate Limit] Database query failed, using in-memory fallback:", dbError.message);
-        // Fallback to in-memory if DB fails
-        const record = rateLimitStore.get(shop) || { count: 0, resetTime: now + windowMs };
-        if (now > record.resetTime) {
-            record.count = 0;
-            record.resetTime = now + windowMs;
+        // Set TTL on first request in window
+        if (current === 1) {
+            await redis.pexpire(key, windowMs);
         }
-        record.count++;
-        rateLimitStore.set(shop, record);
+
+        // Get remaining TTL for reset time
+        const ttl = await redis.pttl(key);
 
         return {
-            allowed: record.count <= maxRequests,
-            remaining: Math.max(0, maxRequests - record.count),
-            resetTime: record.resetTime
+            allowed: current <= maxRequests,
+            remaining: Math.max(0, maxRequests - current),
+            resetTime: now + (ttl > 0 ? ttl : windowMs)
         };
+    } catch (redisError) {
+        console.error("[Rate Limit] Redis error, falling back to database:", redisError.message);
+
+        // Fallback: Query database for rate limit state
+        try {
+            const windowStart = new Date(now - windowMs);
+            const recentEvents = await prisma.tryOnEvent.count({
+                where: {
+                    shop,
+                    createdAt: { gte: windowStart }
+                }
+            });
+
+            return {
+                allowed: recentEvents < maxRequests,
+                remaining: Math.max(0, maxRequests - recentEvents),
+                resetTime: now + windowMs
+            };
+        } catch (dbError) {
+            console.error("[Rate Limit] Database fallback also failed:", dbError.message);
+            // Last resort: allow the request but log
+            return {
+                allowed: true,
+                remaining: maxRequests,
+                resetTime: now + windowMs
+            };
+        }
     }
 }
 
-// Clean up old rate limit records every 5 minutes
-setInterval(() => {
-    const now = Date.now();
-    for (const [shop, record] of rateLimitStore.entries()) {
-        if (now > record.resetTime + 60000) {
-            rateLimitStore.delete(shop);
-        }
-    }
-}, 300000);
+// P0: Redis handles TTL automatically, no need for setInterval cleanup
 
 // ... [Keep existing helper functions: getAccessToken, isUrl, urlToBase64, ensureBase64] ...
 
 
 async function getAccessToken() {
-
     const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
-    // OPTIMIZATION 2: Return cached token if still valid (with 5-minute buffer)
     const now = Math.floor(Date.now() / 1000);
-    if (cachedAccessToken && tokenExpiryTime > now + 300) {
 
-        return cachedAccessToken;
+    // P0: Try to get cached token from Redis first
+    try {
+        const redis = getRedis();
+        const cached = await redis.get(REDIS_KEYS.TOKEN);
+        if (cached) {
+            const { token, expiresAt } = JSON.parse(cached);
+            // Return if still valid with 5-minute buffer
+            if (expiresAt > now + 300) {
+                return token;
+            }
+        }
+    } catch (redisError) {
+        console.warn("[Token] Redis read failed, fetching new token:", redisError.message);
     }
-
-
 
     if (!credentialsPath) {
         throw new Error("GOOGLE_APPLICATION_CREDENTIALS environment variable not set");
@@ -190,7 +185,6 @@ async function getAccessToken() {
 
     const jwt = `${signatureInput}.${signature}`;
 
-
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -203,13 +197,22 @@ async function getAccessToken() {
     }
 
     const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+    const expiresIn = tokenData.expires_in || 3600;
 
-    // OPTIMIZATION 2: Cache the token
-    cachedAccessToken = tokenData.access_token;
-    tokenExpiryTime = now + (tokenData.expires_in || 3600);
+    // P0: Cache the token in Redis
+    try {
+        const redis = getRedis();
+        await redis.set(
+            REDIS_KEYS.TOKEN,
+            JSON.stringify({ token: accessToken, expiresAt: now + expiresIn }),
+            'EX', expiresIn
+        );
+    } catch (redisError) {
+        console.warn("[Token] Redis write failed:", redisError.message);
+    }
 
-
-    return cachedAccessToken;
+    return accessToken;
 }
 
 // OPTIMIZATION 3: Retry logic with exponential backoff
@@ -241,11 +244,13 @@ function isUrl(input) {
     return input.startsWith('http://') || input.startsWith('https://') || input.startsWith('//');
 }
 
-// Helper: Fetch URL and convert to Base64 (with retry)
+// D2-2 FIX: Maximum image size to prevent memory issues
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Helper: Fetch URL and convert to Base64 (with retry and size limit)
 async function urlToBase64(url) {
     try {
         const fullUrl = url.startsWith('//') ? `https:${url}` : url;
-
 
         // Use retry logic for external image fetching
         const response = await fetchWithRetry(fullUrl, {}, 3);
@@ -254,6 +259,12 @@ async function urlToBase64(url) {
         }
 
         const arrayBuffer = await response.arrayBuffer();
+
+        // D2-2 FIX: Check size before processing
+        if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
+            throw new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
+        }
+
         const base64 = Buffer.from(arrayBuffer).toString('base64');
 
         return base64;
@@ -263,7 +274,7 @@ async function urlToBase64(url) {
     }
 }
 
-// Helper: Ensure input is raw Base64
+// Helper: Ensure input is raw Base64 with size validation
 async function ensureBase64(input) {
     if (!input) return "";
 
@@ -273,7 +284,23 @@ async function ensureBase64(input) {
 
     if (typeof input === 'string' && input.startsWith('data:')) {
         const parts = input.split(',');
-        return parts.length > 1 ? parts[1] : input;
+        const base64Data = parts.length > 1 ? parts[1] : input;
+
+        // D2-2 FIX: Validate base64 size (base64 is ~33% larger than binary)
+        const estimatedSize = (base64Data.length * 3) / 4;
+        if (estimatedSize > MAX_IMAGE_SIZE) {
+            throw new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
+        }
+
+        return base64Data;
+    }
+
+    // D2-2 FIX: Validate raw base64 size
+    if (typeof input === 'string') {
+        const estimatedSize = (input.length * 3) / 4;
+        if (estimatedSize > MAX_IMAGE_SIZE) {
+            throw new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / 1024 / 1024}MB`);
+        }
     }
 
     return input; // Assume raw base64
@@ -427,9 +454,9 @@ async function uploadImageToShopify(admin, imageBase64, filename, waitForReady =
           }
         }`;
 
-        // Poll up to 10 times with 1 second intervals
-        for (let i = 0; i < 10; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        // P2 FIX: Reduced polling from 10×1s to 5×600ms for faster response (3s max vs 10s)
+        for (let i = 0; i < 5; i++) {
+            await new Promise(resolve => setTimeout(resolve, 600));
 
             const pollResult = await admin.graphql(fileQueryGql, {
                 variables: { id: fileId }
@@ -437,11 +464,8 @@ async function uploadImageToShopify(admin, imageBase64, filename, waitForReady =
             const pollData = await pollResult.json();
             const polledFile = pollData.data?.node;
 
-
-
             if (polledFile?.image?.url) {
                 publicUrl = polledFile.image.url;
-
                 break;
             }
 
@@ -551,12 +575,11 @@ export const action = async ({ request }) => {
                 authHeader = `Bearer ${accessToken}`;
             } catch (authError) {
                 console.error("[API Debug] Auth Error:", authError);
-                return new Response(JSON.stringify({
-                    error: "Authentication failed. Please check server logs."
-                }), {
-                    status: 500,
-                    headers: corsHeaders
-                });
+                return createErrorResponse(
+                    ErrorCodes.AUTH_FAILED,
+                    "Authentication failed. Please check server logs.",
+                    {}, 500, corsHeaders
+                );
             }
         }
 
@@ -597,36 +620,65 @@ export const action = async ({ request }) => {
             }
         } catch (e) {
             console.error("[API Debug] Failed to parse request body:", e);
-            return new Response(JSON.stringify({ error: "Invalid request body" }), {
-                status: 400,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.INVALID_REQUEST,
+                "Invalid request body",
+                {}, 400, corsHeaders
+            );
         }
 
         const { userImage, garmentImage, garmentType, productId, productTitle, sessionId, deviceType, fingerprintId } = body;
 
-        // CHECK BILLING LIMITS
-        // Use atomic check if possible, but for now standard check is fine for limits
-        const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
-        if (billingInfo) {
-            if (billingInfo.currentUsage >= billingInfo.usageLimit) {
-                return new Response(JSON.stringify({
-                    error: "Usage limit exceeded. Please upgrade your plan.",
-                    code: "LIMIT_EXCEEDED"
-                }), {
-                    status: 402, // Payment Required
-                    headers: corsHeaders
-                });
+        // P1 FIX: Atomic Billing Check + Reserve
+        // Use conditional update to atomically check limit AND reserve usage in one operation
+        // This prevents race conditions where concurrent requests could bypass the limit
+        let billingCheckPassed = true;
+        try {
+            // P0: PostgreSQL raw SQL for atomic check-and-increment
+            // This updates only if currentUsage < usageLimit (single atomic operation)
+            const result = await prisma.$executeRawUnsafe(
+                `UPDATE "BillingInfo" 
+                 SET "currentUsage" = "currentUsage" + 1, "updatedAt" = NOW()
+                 WHERE "shop" = $1 AND "currentUsage" < "usageLimit"`,
+                shop
+            );
+
+            if (result === 0) {
+                // Either shop not found or limit exceeded
+                const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
+                if (billingInfo && billingInfo.currentUsage >= billingInfo.usageLimit) {
+                    billingCheckPassed = false;
+                } else if (!billingInfo) {
+                    // Create default billing info for new shops
+                    await prisma.billingInfo.create({
+                        data: { shop, planName: "Free Plan", usageLimit: 2, currentUsage: 1 }
+                    });
+                }
+                // If billingInfo exists but wasn't updated, it means the condition wasn't met (limit reached)
+            }
+        } catch (billingError) {
+            console.error("[Billing] Atomic check failed, falling back:", billingError.message);
+            // Fallback: standard check (less safe but better than failing)
+            const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
+            if (billingInfo && billingInfo.currentUsage >= billingInfo.usageLimit) {
+                billingCheckPassed = false;
             }
         }
 
+        if (!billingCheckPassed) {
+            return createErrorResponse(
+                ErrorCodes.LIMIT_EXCEEDED,
+                "Usage limit exceeded. Please upgrade your plan.",
+                {}, 402, corsHeaders
+            );
+        }
+
         if (!userImage || !garmentImage) {
-            return new Response(JSON.stringify({
-                error: "Missing required fields: userImage or garmentImage"
-            }), {
-                status: 400,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.MISSING_FIELDS,
+                "Missing required fields: userImage or garmentImage",
+                {}, 400, corsHeaders
+            );
         }
 
 
@@ -639,12 +691,11 @@ export const action = async ({ request }) => {
 
         if (!personImageBase64 || !productImageBase64) {
             console.error("[API Debug] Image conversion failed - empty result");
-            return new Response(JSON.stringify({
-                error: "Failed to process input images"
-            }), {
-                status: 400,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.INVALID_REQUEST,
+                "Failed to process input images",
+                {}, 400, corsHeaders
+            );
         }
 
         const totalSize = personImageBase64.length + productImageBase64.length;
@@ -705,52 +756,51 @@ export const action = async ({ request }) => {
 
         if (!response.ok) {
             console.error("[API Debug] Vertex AI API Error:", JSON.stringify(data, null, 2));
-            return new Response(JSON.stringify({
-                error: data.error?.message || "Google Vertex AI API Error",
-                details: data.error
-            }), {
-                status: response.status || 500,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.AI_ERROR,
+                data.error?.message || "Google Vertex AI API Error",
+                { details: data.error },
+                response.status || 500,
+                corsHeaders
+            );
         }
 
         // Extract result image with defensive checks
         const predictions = data.predictions;
         if (!predictions || !Array.isArray(predictions) || predictions.length === 0) {
             console.error("[API Debug] Invalid predictions array:", predictions);
-            return new Response(JSON.stringify({
-                error: "No predictions returned by AI",
-                details: data
-            }), {
-                status: 500,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.AI_ERROR,
+                "No predictions returned by AI",
+                { details: data },
+                500, corsHeaders
+            );
         }
 
         const firstPrediction = predictions[0];
         if (!firstPrediction || typeof firstPrediction !== 'object') {
             console.error("[API Debug] Invalid first prediction:", firstPrediction);
-            return new Response(JSON.stringify({
-                error: "Invalid prediction format",
-                details: data
-            }), {
-                status: 500,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.AI_ERROR,
+                "Invalid prediction format",
+                { details: data },
+                500, corsHeaders
+            );
         }
 
         // Check for RAI (Responsible AI) filter
         if (firstPrediction.raiFilteredReason) {
             console.warn("[API Debug] Content filtered by RAI:", firstPrediction.raiFilteredReason);
-            return new Response(JSON.stringify({
-                error: "Content filtered by safety policy",
-                message: "The image was filtered by Google's Responsible AI safety system. This may happen if the image contains inappropriate content, poor quality, or doesn't meet safety guidelines.",
-                raiReason: firstPrediction.raiFilteredReason,
-                suggestion: "Please try with a different image that shows a clear, full-body photo in appropriate clothing."
-            }), {
-                status: 400,
-                headers: corsHeaders
-            });
+            return createErrorResponse(
+                ErrorCodes.CONTENT_FILTERED,
+                "Content filtered by safety policy",
+                {
+                    message: "The image was filtered by Google's Responsible AI safety system.",
+                    raiReason: firstPrediction.raiFilteredReason,
+                    suggestion: "Please try with a different image."
+                },
+                400, corsHeaders
+            );
         }
 
         const resultBase64 = firstPrediction.bytesBase64Encoded;
@@ -760,16 +810,15 @@ export const action = async ({ request }) => {
                 type: typeof resultBase64,
                 availableFields: Object.keys(firstPrediction)
             });
-            return new Response(JSON.stringify({
-                error: "AI response missing image data",
-                details: {
+            return createErrorResponse(
+                ErrorCodes.AI_ERROR,
+                "AI response missing image data",
+                {
                     message: "bytesBase64Encoded field not found in prediction",
                     availableFields: Object.keys(firstPrediction)
-                }
-            }), {
-                status: 500,
-                headers: corsHeaders
-            });
+                },
+                500, corsHeaders
+            );
         }
 
         const mimeType = firstPrediction.mimeType || "image/png";
@@ -831,11 +880,8 @@ export const action = async ({ request }) => {
                 }
             });
 
-            // 3. Increment Billing Info (Total Usage for Cycle)
-            await prisma.billingInfo.update({
-                where: { shop },
-                data: { currentUsage: { increment: 1 } }
-            });
+            // P1 FIX: Billing usage already incremented atomically in check phase above
+            // No need to increment again here
 
             // 4. Increment Product Stats (Attribution) - Using Upsert for Race Condition Safety
             if (productId && productTitle) {

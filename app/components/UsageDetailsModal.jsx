@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Download, Calendar, ChevronLeft, ChevronRight, BarChart2 } from "lucide-react";
+// Note: lucide-react removed - using Polaris s-icon and emoji for icons
 
 // Inline Styles
 const styles = {
@@ -173,11 +173,11 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                     </div>
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button style={styles.btn}>
-                            <Download size={16} />
+                            <span style={{ marginRight: '4px' }}>⬇️</span>
                             Export Report
                         </button>
                         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
-                            <X size={24} />
+                            <s-icon type="x" size="base"></s-icon>
                         </button>
                     </div>
                 </div>
@@ -197,7 +197,7 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
 
                     {/* Chart Mock */}
                     <div style={{ ...styles.metricCard, height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: '#9CA3AF' }}>
-                        <BarChart2 size={48} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                        <span style={{ fontSize: '48px', marginBottom: '12px', opacity: 0.5 }}>📊</span>
                         <span style={{ fontSize: '14px' }}>Usage Trends Visualization (Mock)</span>
                     </div>
 
@@ -250,8 +250,8 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                                             </>
                                         ) : (
                                             <>
-                                                <td style={styles.td} style={{ ...styles.td, fontWeight: 500 }}>{row.name}</td>
-                                                <td style={styles.td} style={{ ...styles.td, fontFamily: 'monospace' }}>{row.sku}</td>
+                                                <td style={{ ...styles.td, fontWeight: 500 }}>{row.name}</td>
+                                                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{row.sku}</td>
                                                 <td style={styles.td}>{row.tryOns}</td>
                                                 <td style={styles.td}>
                                                     <span style={{
@@ -276,7 +276,7 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                                 disabled={page === 1}
                                 onClick={() => setPage(p => Math.max(1, p - 1))}
                             >
-                                <ChevronLeft size={16} />
+                                <s-icon type="chevron-left" size="small"></s-icon>
                                 Previous
                             </button>
                             <span style={{ fontSize: '14px', color: '#6B7280' }}>Page {page} of 5</span>
@@ -286,7 +286,7 @@ export const UsageDetailsModal = ({ isOpen, onClose }) => {
                                 onClick={() => setPage(p => Math.min(5, p + 1))}
                             >
                                 Next
-                                <ChevronRight size={16} />
+                                <s-icon type="chevron-right" size="small"></s-icon>
                             </button>
                         </div>
                     </div>

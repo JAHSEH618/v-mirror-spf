@@ -1,5 +1,6 @@
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { webhookResponse } from "../utils/responses.server";
 
 export const action = async ({ request }) => {
     const { topic, shop, session, admin, payload } = await authenticate.webhook(request);
@@ -9,10 +10,35 @@ export const action = async ({ request }) => {
         return new Response();
     }
 
+    // P1 FIX: Webhook idempotency check
+    // Shopify may retry webhooks, so we track processed webhookIds to prevent duplicate handling
+    const webhookId = request.headers.get("X-Shopify-Webhook-Id");
+    if (webhookId) {
+        try {
+            const existing = await prisma.webhookEvent.findUnique({ where: { webhookId } });
+            if (existing) {
+                console.log(`[Webhook] Duplicate ${topic} webhook ${webhookId} for ${shop}, skipping`);
+                return webhookResponse('duplicate');
+            }
+            // Record this webhook as being processed
+            await prisma.webhookEvent.create({
+                data: { webhookId, topic, shop }
+            });
+        } catch (idempotencyError) {
+            // If unique constraint violation, another process already handled it
+            if (idempotencyError.code === 'P2002') {
+                console.log(`[Webhook] Race condition on ${topic} webhook ${webhookId}, skipping`);
+                return webhookResponse('duplicate');
+            }
+            console.error("[Webhook] Idempotency check error:", idempotencyError.message);
+            // Continue processing if idempotency check fails (better than dropping webhook)
+        }
+    }
+
     // The topics handled here should be declared in the shopify.server.js.
     // General error handling or payload validation
     if (topic !== "ORDERS_CREATE") {
-        return new Response("Topic not supported", { status: 404 });
+        return webhookResponse('permanent_failure', "Topic not supported");
     }
 
     try {
@@ -38,36 +64,30 @@ export const action = async ({ request }) => {
                 continue;
             }
 
-            // We only update stats for products that we are tracking (have ProductStat)
-            // This ensures we focus on "V-Mirror" related analytics or at least products that entered our system
-            // If you want to track ALL products, you would use upsert.
-            // For now, based on "Conversion Rate" of Try-On, we update if exists.
-
-            const stat = await prisma.productStat.findUnique({
-                where: {
-                    shop_productId: {
-                        shop,
-                        productId
-                    }
+            // P3 FIX: Use upsert to track ALL attributed orders, even for new products
+            // This ensures complete conversion tracking regardless of prior try-on activity
+            await prisma.productStat.upsert({
+                where: { shop_productId: { shop, productId } },
+                update: {
+                    orderedCount: { increment: quantity },
+                    revenue: { increment: lineRevenue }
+                },
+                create: {
+                    shop,
+                    productId,
+                    productTitle: item.title || 'Unknown Product',
+                    tryOnCount: 0,
+                    orderedCount: quantity,
+                    revenue: lineRevenue
                 }
             });
-
-            if (stat) {
-                await prisma.productStat.update({
-                    where: { id: stat.id },
-                    data: {
-                        orderedCount: { increment: quantity },
-                        revenue: { increment: lineRevenue }
-                    }
-                });
-                console.log(`[V-Mirror] Attributed sale for Product ${productId}: +$${lineRevenue}`);
-            }
+            console.log(`[V-Mirror] Attributed sale for Product ${productId}: +$${lineRevenue}`);
         }
 
     } catch (error) {
         console.error("Error processing ORDERS_CREATE webhook:", error);
-        return new Response("Error processing webhook", { status: 500 });
+        return webhookResponse('temporary_failure', "Error processing webhook");
     }
 
-    return new Response();
+    return webhookResponse('success');
 };
