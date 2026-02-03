@@ -65,6 +65,24 @@ export async function syncSubscriptionState(shop, shopifySubscription, forceUpda
         where: { shopId: shop },
     });
 
+    // DEV MODE FIX: Inspect for Mock Subscription Conflicts
+    // If we are in Dev, and we have a local ACTIVE plan, but Shopify reports nothing (or Free),
+    // we assume the user is using a Mock Upgrade and we should NOT downgrade them automatically.
+    // eslint-disable-next-line no-undef
+    const isDev = process.env.NODE_ENV === "development";
+    if (isDev && currentDbSub?.status === "ACTIVE" && (!shopifySubscription || shopifySubscription.status !== "ACTIVE")) {
+        console.log(`[Subscription Sync] Dev Mode: Preserving local '${currentDbSub.planName}' (Mock) against Shopify Check (Empty/Free).`);
+
+        // Touch sync time to avoid re-checking immediately
+        if (forceUpdate || !currentDbSub.lastSyncTime || (new Date() - currentDbSub.lastSyncTime > 1000 * 60 * 60)) {
+            await prisma.shopSubscription.update({
+                where: { shopId: shop },
+                data: { lastSyncTime: now }
+            });
+        }
+        return currentDbSub;
+    }
+
     // Handle FROZEN state preservation logic
     if (expectedStatus === "FROZEN" && currentDbSub) {
         expectedPlan = currentDbSub.planName;
