@@ -89,10 +89,10 @@ export const action = async ({ request }) => {
                 // Subscription is pending approval - preserve current plan/limits
                 // Query existing billing to not reset their current state
                 dbStatus = "PENDING";
-                const existingBilling = await prisma.billingInfo.findUnique({ where: { shop } });
-                if (existingBilling) {
-                    dbPlanName = existingBilling.planName;
-                    dbLimit = existingBilling.usageLimit;
+                const existingSub = await prisma.shopSubscription.findUnique({ where: { shopId: shop } });
+                if (existingSub) {
+                    dbPlanName = existingSub.planName;
+                    dbLimit = existingSub.usageLimit;
                 }
                 break;
 
@@ -107,24 +107,39 @@ export const action = async ({ request }) => {
                 break;
         }
 
-        // Update DB
+        // Update DB (ShopSubscription)
         try {
-            await prisma.billingInfo.upsert({
-                where: { shop },
+            // Ensure shop exists
+            await prisma.shop.upsert({
+                where: { id: shop },
+                update: {},
+                create: { id: shop }
+            });
+
+            const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : undefined;
+            // Fallback for cycleEndDate: if provided by Shopify use it, otherwise keep existing or set default
+
+            await prisma.shopSubscription.upsert({
+                where: { shopId: shop },
                 update: {
                     planName: dbPlanName,
                     status: dbStatus,
                     usageLimit: dbLimit,
+                    cycleEndDate: currentPeriodEnd, // Trust Shopify's date if present
+                    lastSyncTime: new Date()
                 },
                 create: {
-                    shop,
+                    shopId: shop,
                     planName: dbPlanName,
                     status: dbStatus,
                     usageLimit: dbLimit,
                     currentUsage: 0,
+                    cycleStartDate: new Date(), // New sub
+                    cycleEndDate: currentPeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                    lastSyncTime: new Date()
                 }
             });
-            console.log(`[Webhook] Updated billing info for ${shop}: ${dbPlanName} (${dbStatus})`);
+            console.log(`[Webhook] Updated subscription for ${shop}: ${dbPlanName} (${dbStatus})`);
         } catch (e) {
             console.error(`[Webhook] Failed to update billing info for ${shop}:`, e);
         }

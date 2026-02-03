@@ -111,49 +111,25 @@
     {{ 'try-on-widget.css' | asset_url | stylesheet_tag }}
     
     <script>
+      // Critical config - non-blocking
       window.VMirrorConfig = {
         appProxyUrl: '/apps/v-mirror',
         settingsApiUrl: '/apps/v-mirror/api/settings?shop={{ shop.permanent_domain }}',
         shopDomain: '{{ shop.permanent_domain }}',
-        productImage: "{{ product.featured_image | image_url: width: 800 }}",
-        productTitle: "{{ product.title | escape }}",
         productId: "{{ product.id }}",
-        productType: "{{ product.type | escape }}",
-        productCategory: "{% if product.category %}{{ product.category.name | escape }}{% endif %}",
-        productTags: {{ product.tags | json }},
         garmentType: "{{ garment_type }}",
-        // Default settings from theme schema (will be overridden by API settings)
-        modalTitle: "{{ block.settings.modal_title | escape }}",
-        uploadInstructions: "{{ block.settings.upload_instructions | escape }}",
+        // Pass essential settings from block schema to avoid initial API wait
+        buttonText: "{{ block.settings.button_text | escape }}",
         primaryColor: "{{ block.settings.primary_color }}",
-        widgetLogo: "{{ block.settings.widget_logo | image_url: width: 400 }}",
         textColor: "{{ block.settings.text_color }}",
-        animationStyle: "{{ block.settings.animation_style }}",
         position: "{{ block.settings.position }}",
         horizontalOffset: {{ block.settings.horizontal_offset }},
         verticalOffset: {{ block.settings.vertical_offset }},
-        buttonText: "{{ block.settings.button_text | escape }}",
-        tooltipText: "{{ block.settings.tooltip_text | escape }}",
         smartDetection: {{ block.settings.smart_detection }},
-        showOnMobile: {{ block.settings.show_on_mobile }},
-        variants: {{ product.variants | json }}
+        showOnMobile: {{ block.settings.show_on_mobile }}
       };
-      
-      // Load settings from API (will override defaults if available)
-      fetch(window.VMirrorConfig.settingsApiUrl)
-        .then(res => res.json())
-        .then(settings => {
-          if (settings && !settings.error) {
-            Object.assign(window.VMirrorConfig, settings);
-            // Re-apply styling if widget is already loaded
-            if (window.VMirrorWidget && window.VMirrorWidget.applySettings) {
-              window.VMirrorWidget.applySettings(settings);
-            }
-          }
-        })
-        .catch(err => console.warn('Failed to load widget settings:', err));
     </script>
-    {{ 'try-on-widget.js' | asset_url | script_tag }}
+    <script src="{{ 'try-on-widget.js' | asset_url }}" defer></script>
   {% endif %}
 {% endif %}
 

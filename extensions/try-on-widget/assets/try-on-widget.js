@@ -165,7 +165,7 @@
     // ============================================
     // Initialization
     // ============================================
-    function init() {
+    async function init() {
         triggerBtn = document.getElementById('v-mirror-trigger-btn');
         modalRoot = document.getElementById('v-mirror-modal-root');
 
@@ -180,14 +180,77 @@
             widget.classList.add('show-mobile');
         }
 
-        // Initialize selected variant from config
-        const variants = config.variants || [];
-        if (variants.length > 0) {
-            state.selectedVariant = variants[0];
+        // P2 FIX: Extract variants and product info from DOM attributes (Faster than Liquid object for large products)
+        try {
+            const variantsData = triggerBtn.getAttribute('data-product-variants');
+            if (variantsData) {
+                const variants = JSON.parse(variantsData);
+                config.variants = variants;
+                if (variants.length > 0) {
+                    state.selectedVariant = variants[0];
+                }
+            }
+            config.productTitle = triggerBtn.getAttribute('data-product-title');
+            config.productImage = triggerBtn.getAttribute('data-product-image');
+        } catch (e) {
+            console.warn('[V-Mirror] Failed to parse product data from DOM:', e);
         }
 
-        // Bind events
+        // Bind events immediately so button works with defaults
         bindEvents();
+
+        // Check for prior try-on session to inject attribution
+        checkAttribution();
+
+        // P2 FIX: Fetch merchant settings in background to override defaults
+        if (config.settingsApiUrl) {
+            try {
+                const response = await fetch(config.settingsApiUrl);
+                if (response.ok) {
+                    const settings = await response.json();
+                    applySettings(settings);
+                }
+            } catch (e) {
+                console.log('[V-Mirror] Settings fetch failed (using defaults):', e.message);
+            }
+        }
+    }
+
+    function checkAttribution() {
+        try {
+            const key = `v_mirror_tried_${config.productId}`;
+            if (sessionStorage.getItem(key)) {
+                injectAttributionTag();
+            }
+        } catch (e) {
+            // Ignore storage errors
+        }
+    }
+
+    function markAsTriedOn() {
+        try {
+            const key = `v_mirror_tried_${config.productId}`;
+            sessionStorage.setItem(key, 'true');
+            injectAttributionTag();
+        } catch (e) {
+            console.warn('[V-Mirror] Failed to save session:', e);
+        }
+    }
+
+    function injectAttributionTag() {
+        // Find all add-to-cart forms
+        const forms = document.querySelectorAll('form[action*="/cart/add"]');
+        forms.forEach(form => {
+            // Check if already injected
+            if (!form.querySelector('input[name="properties[_from_v_mirror]"]')) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'properties[_from_v_mirror]';
+                input.value = 'true';
+                form.appendChild(input);
+                console.log('[V-Mirror] Injected attribution tag for Product ' + config.productId);
+            }
+        });
     }
 
 
@@ -387,6 +450,7 @@
             case 'loading':
                 return renderLoadingView();
             case 'result':
+                markAsTriedOn(); // Mark success for attribution
                 return renderResultView();
             case 'error':
                 return renderErrorView();
@@ -822,10 +886,19 @@
         }
 
         // Lightbox close handlers
+        const lightbox = document.getElementById('v-mirror-lightbox');
         const lightboxClose = document.getElementById('v-mirror-lightbox-close');
         const lightboxCloseBtn = document.getElementById('v-mirror-lightbox-close-btn');
-        if (lightboxClose) {
-            lightboxClose.addEventListener('click', closeLightbox);
+
+        if (lightbox) {
+            lightbox.addEventListener('click', (e) => {
+                // Close if clicking on the backdrop or the empty space around the image
+                if (e.target.id === 'v-mirror-lightbox' ||
+                    e.target.id === 'v-mirror-lightbox-close' ||
+                    e.target.classList.contains('v-mirror-lightbox-content')) {
+                    closeLightbox();
+                }
+            });
         }
         if (lightboxCloseBtn) {
             lightboxCloseBtn.addEventListener('click', closeLightbox);

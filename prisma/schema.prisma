@@ -67,43 +67,7 @@ model WidgetSettings {
   updatedAt          DateTime @updatedAt
 }
 
-model BillingInfo {
-  id                 String   @id @default(uuid())
-  shop               String   @unique
-  
-  // Subscription Plan
-  planName           String   @default("Free Plan")
-  status             String   @default("ACTIVE") // ACTIVE, CANCELLED, FROZEN
-  
-  // Usage Limits
-  usageLimit         Int      @default(10)      // Monthly limit
-  currentUsage       Int      @default(0)       // Usage in current cycle
-  cycleStartDate     DateTime @default(now())
-  
-  // Payment Info Snapshot (Legacy/Cached)
-  paymentType        String?  @default("CREDIT_CARD")
-  cardBrand          String?
-  cardLast4          String?
-  cardExpiry         String?
-  
-  paymentMethods     PaymentMethod[]
-  
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
 
-model PaymentMethod {
-  id            String      @id @default(uuid())
-  billingInfo   BillingInfo @relation(fields: [billingInfoId], references: [id])
-  billingInfoId String
-  
-  brand         String      // visa, mastercard, amex
-  last4         String
-  expiry        String      // MM/YYYY
-  isDefault     Boolean     @default(false)
-  
-  createdAt     DateTime    @default(now())
-}
 
 model BillingHistory {
   id                 String   @id @default(uuid())
@@ -128,6 +92,14 @@ model UsageStat {
   date               DateTime @default(now()) // The date of usage
   count              Int      @default(0)     // Usage count for this day
   
+  // Pre-aggregated device stats (Atomic increments)
+  desktopCount       Int      @default(0)
+  mobileCount        Int      @default(0)
+  tabletCount        Int      @default(0)
+  unknownDeviceCount Int      @default(0)
+
+  shopRel            Shop?    @relation(fields: [shop], references: [id])
+  
   @@unique([shop, date]) // One record per shop per day (ideally truncate date to day)
   @@index([shop, date])  // Performance: optimize time-range queries
 }
@@ -146,6 +118,8 @@ model ProductStat {
   
   lastTryOn      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  
+  shopRel        Shop?    @relation(fields: [shop], references: [id])
 
   @@unique([shop, productId])
   @@index([shop, tryOnCount]) // Performance: optimize Top N product queries
@@ -175,8 +149,11 @@ model TryOnEvent {
 
   @@index([shop, productId])
   @@index([shop, createdAt])
+  @@index([createdAt]) // Performance: optimize global data retention cleanup
   @@index([sessionId])
   @@index([shop, deviceType])
+  
+  shopRel       Shop?    @relation(fields: [shop], references: [id])
 }
 
 // Background upload task tracking for CDN optimization
@@ -189,6 +166,8 @@ model UploadTask {
   status      String   @default("pending") // pending | completed | failed
   cdnUrl      String?  // Shopify CDN URL after successful upload
   error       String?  // Error message if failed
+  
+  shopRel     Shop?    @relation(fields: [shop], references: [id])
 
   createdAt   DateTime @default(now())
   completedAt DateTime?
@@ -205,9 +184,57 @@ model WebhookEvent {
   webhookId String   @unique  // Shopify Webhook ID from X-Shopify-Webhook-Id header
   topic     String             // e.g., "ORDERS_CREATE", "APP_SUBSCRIPTIONS_UPDATE"
   shop      String
+  shopRel   Shop?    @relation(fields: [shop], references: [id]) // Optional relation for now
   processed Boolean  @default(true)
   createdAt DateTime @default(now())
 
   @@index([shop, topic])
   @@index([createdAt])  // For cleanup of old records
 }
+
+// ==========================================
+// NEW ARCHITECTURE: Centralized Shop Entity
+// ==========================================
+
+model Shop {
+  id            String    @id // The myshopify domain (e.g. "my-shop.myshopify.com")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Data Relations
+  subscription  ShopSubscription?
+  tryOnEvents   TryOnEvent[]
+  usageStats    UsageStat[]
+  productStats  ProductStat[]
+  uploadTasks   UploadTask[]
+  webhookEvents WebhookEvent[]
+  
+  // Settings (Migrated from WidgetSettings eventually)
+  // settings      WidgetSettings?
+}
+
+// NEW TABLE: Robust Subscription & Usage Tracking
+model ShopSubscription {
+  id                 String   @id @default(uuid())
+  shop               Shop     @relation(fields: [shopId], references: [id])
+  shopId             String   @unique
+
+  planName           String   @default("Free Plan")
+  status             String   @default("ACTIVE") // ACTIVE, FROZEN, CANCELLED, PENDING
+  
+  // Usage Limits & Tracking
+  usageLimit         Int      @default(10)
+  currentUsage       Int      @default(0)
+  
+  // Cycle Management
+  cycleStartDate     DateTime @default(now())
+  cycleEndDate       DateTime? // When the current cycle expires (usually +30 days)
+
+  // Payment Link (Optional snapshot)
+  paymentMethod      String?  @default("SHOPIFY_BILLING")
+  
+  lastSyncTime       DateTime @default(now()) // For rate-limit optimization
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+

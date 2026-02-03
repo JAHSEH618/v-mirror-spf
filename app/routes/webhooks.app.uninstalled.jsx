@@ -25,8 +25,12 @@ export const action = async ({ request }) => {
       prisma.widgetSettings.deleteMany({ where: { shop } }),
 
       // Billing and payment info
-      prisma.billingInfo.deleteMany({ where: { shop } }),
+      // Billing and payment info
+      prisma.shopSubscription.deleteMany({ where: { shopId: shop } }),
       prisma.billingHistory.deleteMany({ where: { shop } }),
+
+      // Central Shop entity (must be last due to FK constraints if not cascading)
+      prisma.shop.deleteMany({ where: { id: shop } }),
 
       // Usage and analytics
       prisma.usageStat.deleteMany({ where: { shop } }),

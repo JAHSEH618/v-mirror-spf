@@ -629,38 +629,74 @@ export const action = async ({ request }) => {
 
         const { userImage, garmentImage, garmentType, productId, productTitle, sessionId, deviceType, fingerprintId } = body;
 
-        // P1 FIX: Atomic Billing Check + Reserve
+        // P1 FIX: Atomic Billing Check + Reserve (Switching to ShopSubscription)
         // Use conditional update to atomically check limit AND reserve usage in one operation
-        // This prevents race conditions where concurrent requests could bypass the limit
         let billingCheckPassed = true;
         try {
-            // P0: PostgreSQL raw SQL for atomic check-and-increment
-            // This updates only if currentUsage < usageLimit (single atomic operation)
+            // P1 FIX: Check for billing cycle reset FIRST
+            // This is "lazy" cleanup - we check when they try to use it
+            const shopSub = await prisma.shopSubscription.findUnique({ where: { shopId: shop } });
+
+            if (shopSub) {
+                const now = new Date();
+                // Default 30 day cycle if not set
+                const cycleStart = new Date(shopSub.cycleStartDate);
+                const nextCycle = new Date(cycleStart);
+                nextCycle.setDate(cycleStart.getDate() + 30);
+
+                if (now >= nextCycle) {
+                    console.log(`[Billing] Resetting cycle for ${shop}`);
+                    await prisma.shopSubscription.update({
+                        where: { id: shopSub.id },
+                        data: {
+                            currentUsage: 0,
+                            cycleStartDate: now,
+                            cycleEndDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+                        }
+                    });
+                }
+            }
+
+            // P0: PostgreSQL raw SQL for atomic check-and-increment on ShopSubscription
             const result = await prisma.$executeRawUnsafe(
-                `UPDATE "BillingInfo" 
+                `UPDATE "ShopSubscription" 
                  SET "currentUsage" = "currentUsage" + 1, "updatedAt" = NOW()
-                 WHERE "shop" = $1 AND "currentUsage" < "usageLimit"`,
+                 WHERE "shopId" = $1 AND "currentUsage" < "usageLimit"`,
                 shop
             );
 
             if (result === 0) {
                 // Either shop not found or limit exceeded
-                const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
-                if (billingInfo && billingInfo.currentUsage >= billingInfo.usageLimit) {
+                const sub = await prisma.shopSubscription.findUnique({ where: { shopId: shop } });
+
+                if (sub && sub.currentUsage >= sub.usageLimit) {
                     billingCheckPassed = false;
-                } else if (!billingInfo) {
-                    // Create default billing info for new shops
-                    await prisma.billingInfo.create({
-                        data: { shop, planName: "Free Plan", usageLimit: 2, currentUsage: 1 }
+                } else if (!sub) {
+                    // Create default subscription for new shops (relation to Shop)
+                    // Ensure Shop exists first (migration safety)
+                    await prisma.shop.upsert({
+                        where: { id: shop },
+                        update: {},
+                        create: { id: shop }
+                    });
+
+                    await prisma.shopSubscription.create({
+                        data: {
+                            shopId: shop,
+                            planName: "Free Plan",
+                            usageLimit: 2,
+                            currentUsage: 1,
+                            cycleStartDate: new Date(),
+                            cycleEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                        }
                     });
                 }
-                // If billingInfo exists but wasn't updated, it means the condition wasn't met (limit reached)
             }
         } catch (billingError) {
             console.error("[Billing] Atomic check failed, falling back:", billingError.message);
-            // Fallback: standard check (less safe but better than failing)
-            const billingInfo = await prisma.billingInfo.findUnique({ where: { shop } });
-            if (billingInfo && billingInfo.currentUsage >= billingInfo.usageLimit) {
+            // Fallback: standard check
+            const sub = await prisma.shopSubscription.findUnique({ where: { shopId: shop } });
+            if (sub && sub.currentUsage >= sub.usageLimit) {
                 billingCheckPassed = false;
             }
         }
@@ -865,6 +901,12 @@ export const action = async ({ request }) => {
             });
 
             // 2. Increment Shop Usage (Hourly) - Using Upsert for Race Condition Safety
+            const safeDeviceType = deviceType || 'unknown';
+            const isDesktop = safeDeviceType === 'desktop' ? 1 : 0;
+            const isMobile = safeDeviceType === 'mobile' ? 1 : 0;
+            const isTablet = safeDeviceType === 'tablet' ? 1 : 0;
+            const isUnknown = (!['desktop', 'mobile', 'tablet'].includes(safeDeviceType)) ? 1 : 0;
+
             await prisma.usageStat.upsert({
                 where: {
                     shop_date: {
@@ -872,11 +914,21 @@ export const action = async ({ request }) => {
                         date: currentHour
                     }
                 },
-                update: { count: { increment: 1 } },
+                update: {
+                    count: { increment: 1 },
+                    desktopCount: { increment: isDesktop },
+                    mobileCount: { increment: isMobile },
+                    tabletCount: { increment: isTablet },
+                    unknownDeviceCount: { increment: isUnknown }
+                },
                 create: {
                     shop,
                     date: currentHour,
-                    count: 1
+                    count: 1,
+                    desktopCount: isDesktop,
+                    mobileCount: isMobile,
+                    tabletCount: isTablet,
+                    unknownDeviceCount: isUnknown
                 }
             });
 
@@ -902,9 +954,30 @@ export const action = async ({ request }) => {
                         lastTryOn: new Date()
                     }
                 });
-
-
             }
+
+            // OPTIMIZATION 2: Data Retention / Cleanup
+            // Probabilistic cleanup (1% chance)
+            if (Math.random() < 0.01) {
+                // Fire and forget - don't await
+                (async () => {
+                    try {
+                        const ninetyDaysAgo = new Date();
+                        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+                        const deleted = await prisma.tryOnEvent.deleteMany({
+                            where: {
+                                createdAt: { lt: ninetyDaysAgo }
+                            }
+                        });
+                        console.log(`[Cleanup] Deleted ${deleted.count} old events`);
+                    } catch (e) {
+                        console.error("[Cleanup] Failed:", e);
+                    }
+                })();
+            }
+
+
+
 
         } catch (dbError) {
             console.error("[PERF] ❌ Failed to track usage stats:", dbError);

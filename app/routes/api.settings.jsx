@@ -1,31 +1,9 @@
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 
-// Simple in-memory cache for widget settings
-const settingsCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+import { getHealthyRedis, REDIS_KEYS } from "../redis.server";
 
-function getCachedSettings(shop) {
-    const cached = settingsCache.get(shop);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        return cached.data;
-    }
-    return null;
-}
-
-function setCachedSettings(shop, data) {
-    settingsCache.set(shop, { data, timestamp: Date.now() });
-}
-
-// Clean up old cache entries every 10 minutes
-setInterval(() => {
-    const now = Date.now();
-    for (const [shop, cached] of settingsCache.entries()) {
-        if (now - cached.timestamp > CACHE_TTL * 2) {
-            settingsCache.delete(shop);
-        }
-    }
-}, 10 * 60 * 1000);
+const SETTINGS_CACHE_TTL = 300; // 5 minutes in seconds
 
 const corsHeaders = {
     "Content-Type": "application/json",
@@ -65,8 +43,19 @@ export const loader = async ({ request }) => {
         });
     }
 
-    // P2 FIX: Check cache first
-    const cachedSettings = getCachedSettings(shop);
+    // P2 FIX: Check Redis cache first
+    let cachedSettings = null;
+    let redis = null;
+    try {
+        redis = await getHealthyRedis();
+        const cached = await redis.get(`vmirror:settings:${shop}`);
+        if (cached) {
+            cachedSettings = JSON.parse(cached);
+        }
+    } catch (e) {
+        console.warn("[Redis] Cache read failed (falling back to DB):", e.message);
+    }
+
     if (cachedSettings) {
         return new Response(JSON.stringify(cachedSettings), {
             headers: {
@@ -102,8 +91,14 @@ export const loader = async ({ request }) => {
     } else {
     }
 
-    // P2 FIX: Cache the settings
-    setCachedSettings(shop, settings);
+    // P2 FIX: Cache the settings in Redis
+    if (redis) {
+        try {
+            await redis.set(`vmirror:settings:${shop}`, JSON.stringify(settings), 'EX', SETTINGS_CACHE_TTL);
+        } catch (e) {
+            console.warn("[Redis] Cache write failed:", e.message);
+        }
+    }
 
     // Return settings as JSON with CORS headers for storefront
     return new Response(JSON.stringify(settings), {
