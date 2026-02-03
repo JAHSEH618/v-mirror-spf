@@ -15,21 +15,21 @@ datasource db {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 
@@ -39,87 +39,92 @@ model Session {
 }
 
 model WidgetSettings {
-  id                 String   @id @default(uuid())
-  shop               String   @unique
-  
+  id      String @id @default(uuid())
+  shop    String @unique
+  shopRel Shop   @relation(fields: [shop], references: [id])
+
   // Position
-  position           String   @default("bottom-right")
-  horizontalOffset   Int      @default(20)
-  verticalOffset     Int      @default(20)
-  
+  position         String @default("bottom-right")
+  horizontalOffset Int    @default(20)
+  verticalOffset   Int    @default(20)
+
   // Appearance
-  primaryColor       String   @default("#7C3AED")
-  textColor          String   @default("#FFFFFF")
-  logoUrl            String?
-  
+  primaryColor String  @default("#7C3AED")
+  textColor    String  @default("#FFFFFF")
+  logoUrl      String?
+
   // Text Content
-  buttonText         String   @default("Try It On")
-  tooltipText        String   @default("See how it looks on you!")
-  modalTitle         String   @default("AI Virtual Try-On")
-  uploadInstructions String   @default("Upload a full-body photo for best results")
-  
+  buttonText         String @default("Try It On")
+  tooltipText        String @default("See how it looks on you!")
+  modalTitle         String @default("AI Virtual Try-On")
+  uploadInstructions String @default("Upload a full-body photo for best results")
+
   // Advanced
-  smartDetection     Boolean  @default(false)
-  showOnMobile       Boolean  @default(true)
-  animationStyle     String   @default("fade-in")
-  
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  smartDetection Boolean @default(false)
+  showOnMobile   Boolean @default(true)
+  animationStyle String  @default("fade-in")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-
+enum BillingStatus {
+  PAID
+  PENDING
+  FAILED
+}
 
 model BillingHistory {
-  id                 String   @id @default(uuid())
-  shop               String
-  
-  date               DateTime @default(now())
-  description        String
-  amount             Float
-  currency           String   @default("USD")
-  status             String   @default("PAID") // PAID, PENDING, FAILED
-  invoiceUrl         String?
-  
-  createdAt          DateTime @default(now())
+  id      String @id @default(uuid())
+  shop    String
+  shopRel Shop   @relation(fields: [shop], references: [id])
+
+  date        DateTime      @default(now())
+  description String
+  amount      Decimal       @db.Decimal(10, 2)
+  currency    String        @default("USD")
+  status      BillingStatus @default(PAID)
+  invoiceUrl  String?
+
+  createdAt DateTime @default(now())
 
   @@index([shop, date]) // Performance: optimize history queries by shop and date
 }
 
 model UsageStat {
-  id                 String   @id @default(uuid())
-  shop               String
-  
-  date               DateTime @default(now()) // The date of usage
-  count              Int      @default(0)     // Usage count for this day
-  
-  // Pre-aggregated device stats (Atomic increments)
-  desktopCount       Int      @default(0)
-  mobileCount        Int      @default(0)
-  tabletCount        Int      @default(0)
-  unknownDeviceCount Int      @default(0)
+  id   String @id @default(uuid())
+  shop String
 
-  shopRel            Shop?    @relation(fields: [shop], references: [id])
-  
+  date  DateTime @default(now()) // The date of usage
+  count Int      @default(0) // Usage count for this day
+
+  // Pre-aggregated device stats (Atomic increments)
+  desktopCount       Int @default(0)
+  mobileCount        Int @default(0)
+  tabletCount        Int @default(0)
+  unknownDeviceCount Int @default(0)
+
+  shopRel Shop? @relation(fields: [shop], references: [id])
+
   @@unique([shop, date]) // One record per shop per day (ideally truncate date to day)
-  @@index([shop, date])  // Performance: optimize time-range queries
 }
 
 model ProductStat {
-  id             String   @id @default(uuid())
-  shop           String
-  productId      String   // Shopify Product ID
-  productTitle   String
-  productImage   String?
-  
-  tryOnCount     Int      @default(0)
-  addToCartCount Int      @default(0) // Kept for funnel analysis
-  orderedCount   Int      @default(0) // New: For final conversion
-  revenue        Float    @default(0.0) // New: For revenue impact
-  
-  lastTryOn      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
-  shopRel        Shop?    @relation(fields: [shop], references: [id])
+  id           String  @id @default(uuid())
+  shop         String
+  productId    String // Shopify Product ID
+  productTitle String
+  productImage String?
+
+  tryOnCount     Int     @default(0)
+  addToCartCount Int     @default(0) // Kept for funnel analysis
+  orderedCount   Int     @default(0) // New: For final conversion
+  revenue        Decimal @default(0.0) @db.Decimal(10, 2) // New: For revenue impact
+
+  lastTryOn DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shopRel Shop? @relation(fields: [shop], references: [id])
 
   @@unique([shop, productId])
   @@index([shop, tryOnCount]) // Performance: optimize Top N product queries
@@ -127,52 +132,51 @@ model ProductStat {
 
 // Fine-grained event tracking for user/device analytics
 model TryOnEvent {
-  id            String   @id @default(uuid())
-  shop          String
-  productId     String
-  productTitle  String?
+  id           String  @id @default(uuid())
+  shop         String
+  productId    String
+  productTitle String?
 
   // User/Device identification
-  sessionId     String?  // Browser session identifier (localStorage UUID)
-  fingerprintId String?  // Browser fingerprint ID
-  deviceType    String?  // "mobile" | "desktop" | "tablet"
-  userAgent     String?  // Full user agent string for analysis
+  sessionId     String? // Browser session identifier (localStorage UUID)
+  fingerprintId String? // Browser fingerprint ID
+  deviceType    String? // "mobile" | "desktop" | "tablet"
+  userAgent     String? // Full user agent string for analysis
 
   // Request metadata
-  ipHash        String?  // Hashed IP for privacy-safe geo analysis
-  referer       String?  // Where the user came from
+  ipHash  String? // Hashed IP for privacy-safe geo analysis
+  referer String? // Where the user came from
 
   // Result
-  success       Boolean  @default(true)
+  success Boolean @default(true)
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  shopRel Shop? @relation(fields: [shop], references: [id])
 
   @@index([shop, productId])
   @@index([shop, createdAt])
   @@index([createdAt]) // Performance: optimize global data retention cleanup
   @@index([sessionId])
   @@index([shop, deviceType])
-  
-  shopRel       Shop?    @relation(fields: [shop], references: [id])
 }
 
 // Background upload task tracking for CDN optimization
 model UploadTask {
-  id          String   @id @default(uuid())
-  taskId      String   @unique  // Custom task identifier
-  shop        String
-  filename    String
+  id       String @id @default(uuid())
+  taskId   String @unique // Custom task identifier
+  shop     String
+  filename String
 
-  status      String   @default("pending") // pending | completed | failed
-  cdnUrl      String?  // Shopify CDN URL after successful upload
-  error       String?  // Error message if failed
-  
-  shopRel     Shop?    @relation(fields: [shop], references: [id])
+  status String  @default("pending") // pending | completed | failed
+  cdnUrl String? // Shopify CDN URL after successful upload
+  error  String? // Error message if failed
 
-  createdAt   DateTime @default(now())
+  shopRel Shop? @relation(fields: [shop], references: [id])
+
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
 
-  @@index([taskId])
   @@index([shop, status])
   @@index([createdAt])
 }
@@ -181,15 +185,15 @@ model UploadTask {
 // Prevents duplicate processing when Shopify retries webhook delivery
 model WebhookEvent {
   id        String   @id @default(uuid())
-  webhookId String   @unique  // Shopify Webhook ID from X-Shopify-Webhook-Id header
-  topic     String             // e.g., "ORDERS_CREATE", "APP_SUBSCRIPTIONS_UPDATE"
+  webhookId String   @unique // Shopify Webhook ID from X-Shopify-Webhook-Id header
+  topic     String // e.g., "ORDERS_CREATE", "APP_SUBSCRIPTIONS_UPDATE"
   shop      String
   shopRel   Shop?    @relation(fields: [shop], references: [id]) // Optional relation for now
   processed Boolean  @default(true)
   createdAt DateTime @default(now())
 
   @@index([shop, topic])
-  @@index([createdAt])  // For cleanup of old records
+  @@index([createdAt]) // For cleanup of old records
 }
 
 // ==========================================
@@ -197,44 +201,42 @@ model WebhookEvent {
 // ==========================================
 
 model Shop {
-  id            String    @id // The myshopify domain (e.g. "my-shop.myshopify.com")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String   @id // The myshopify domain (e.g. "my-shop.myshopify.com")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Data Relations
-  subscription  ShopSubscription?
-  tryOnEvents   TryOnEvent[]
-  usageStats    UsageStat[]
-  productStats  ProductStat[]
-  uploadTasks   UploadTask[]
-  webhookEvents WebhookEvent[]
-  
-  // Settings (Migrated from WidgetSettings eventually)
-  // settings      WidgetSettings?
+  subscription   ShopSubscription?
+  tryOnEvents    TryOnEvent[]
+  usageStats     UsageStat[]
+  productStats   ProductStat[]
+  uploadTasks    UploadTask[]
+  webhookEvents  WebhookEvent[]
+  billingHistory BillingHistory[]
+  widgetSettings WidgetSettings?
 }
 
 // NEW TABLE: Robust Subscription & Usage Tracking
 model ShopSubscription {
-  id                 String   @id @default(uuid())
-  shop               Shop     @relation(fields: [shopId], references: [id])
-  shopId             String   @unique
+  id     String @id @default(uuid())
+  shop   Shop   @relation(fields: [shopId], references: [id])
+  shopId String @unique
 
-  planName           String   @default("Free Plan")
-  status             String   @default("ACTIVE") // ACTIVE, FROZEN, CANCELLED, PENDING
-  
+  planName String @default("Free Plan")
+  status   String @default("ACTIVE") // ACTIVE, FROZEN, CANCELLED, PENDING
+
   // Usage Limits & Tracking
-  usageLimit         Int      @default(10)
-  currentUsage       Int      @default(0)
-  
+  usageLimit   Int @default(10)
+  currentUsage Int @default(0)
+
   // Cycle Management
-  cycleStartDate     DateTime @default(now())
-  cycleEndDate       DateTime? // When the current cycle expires (usually +30 days)
+  cycleStartDate DateTime  @default(now())
+  cycleEndDate   DateTime? // When the current cycle expires (usually +30 days)
 
   // Payment Link (Optional snapshot)
-  paymentMethod      String?  @default("SHOPIFY_BILLING")
-  
-  lastSyncTime       DateTime @default(now()) // For rate-limit optimization
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
+  paymentMethod String? @default("SHOPIFY_BILLING")
 
+  lastSyncTime DateTime @default(now()) // For rate-limit optimization
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
