@@ -1,6 +1,6 @@
-import { useLoaderData, useSubmit, useActionData, useSearchParams, useRevalidator, useNavigate } from "react-router";
+import { useLoaderData, useSubmit, useActionData, useSearchParams, useRevalidator, useNavigate, useFetcher } from "react-router";
 import { useState, useEffect, useMemo } from "react";
-import { authenticate, apiVersion } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { useLanguage } from "../components/LanguageContext";
 import prisma from "../db.server";
@@ -41,58 +41,13 @@ export const loader = async ({ request }) => {
     // === Parallel execution of database queries (fast) ===
     // External API calls are moved to a race with timeout to prevent blocking
 
-    // Theme check with aggressive timeout (non-blocking for page load)
-    const checkAppBlockStatusWithTimeout = async () => {
-        const TIMEOUT_MS = 2000;
-        const timeoutPromise = new Promise((resolve) => {
-            setTimeout(() => resolve(null), TIMEOUT_MS);
-        });
 
-        const checkPromise = (async () => {
-            try {
-                const themesResponse = await admin.graphql(
-                    `#graphql
-                    query getThemes {
-                        themes(first: 5, roles: MAIN) {
-                            nodes { id }
-                        }
-                    }`
-                );
-                const themesData = await themesResponse.json();
-                const mainThemeId = themesData.data?.themes?.nodes?.[0]?.id;
-
-                if (mainThemeId) {
-                    const themeId = mainThemeId.split('/').pop();
-                    const response = await fetch(
-                        `https://${session.shop}/admin/api/${apiVersion}/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
-                        { headers: { "X-Shopify-Access-Token": session.accessToken } }
-                    );
-                    const json = await response.json();
-                    const asset = json.asset;
-
-                    if (asset?.value) {
-                        const settingsData = JSON.parse(asset.value);
-                        const blocks = settingsData.current?.blocks || {};
-                        return Object.values(blocks).some((block) => {
-                            return block.type.includes("try-on-widget") && String(block.disabled) !== "true";
-                        });
-                    }
-                }
-            } catch (error) {
-                console.warn("Theme check failed:", error);
-            }
-            return false;
-        })();
-
-        const result = await Promise.race([checkPromise, timeoutPromise]);
-        return result === null ? false : result;
-    };
 
     // Billing check with timeout
     const checkBillingStatusWithTimeout = async () => {
         const TIMEOUT_MS = 1500;
         const timeoutPromise = new Promise((resolve) => {
-            setTimeout(() => resolve({ hasActivePayment: false, subscription: null }), TIMEOUT_MS);
+            setTimeout(() => resolve({ isTimeout: true, hasActivePayment: false, subscription: null }), TIMEOUT_MS);
         });
 
         const checkPromise = (async () => {
@@ -102,11 +57,12 @@ export const loader = async ({ request }) => {
                     isTest: IS_TEST_MODE,
                 });
                 return {
+                    isTimeout: false,
                     hasActivePayment: billingCheck.hasActivePayment,
                     subscription: billingCheck.appSubscriptions?.[0] || null
                 };
             } catch (e) {
-                return { hasActivePayment: false, subscription: null };
+                return { isTimeout: false, hasActivePayment: false, subscription: null };
             }
         })();
 
@@ -115,7 +71,6 @@ export const loader = async ({ request }) => {
 
     // === Execute all queries in parallel with timeouts ===
     const [
-        isEmbedEnabled,
         hasPaymentResult,
         billingInfoResult,
         billingHistorySrc,
@@ -126,7 +81,6 @@ export const loader = async ({ request }) => {
         prevUvStats,    // New: UV for previous week
         globalStatsSrc  // New: Global aggregates (sum)
     ] = await Promise.all([
-        checkAppBlockStatusWithTimeout(),
         checkBillingStatusWithTimeout(),
         prisma.shopSubscription.findUnique({
             where: { shopId: shop }
@@ -212,7 +166,12 @@ export const loader = async ({ request }) => {
         } else if (shouldSync) {
             // === SYNC WITH SHOPIFY (Using Centralized Service) ===
             try {
-                billingInfo = await syncSubscriptionState(shop, shopifySubscription, true);
+                // FIXED: Do not sync if we timed out on the check, otherwise we might downgrade valid users
+                if (hasPaymentResult.isTimeout) {
+                    console.warn(`[Billing Sync] Skipping sync for ${shop} due to billing check timeout. Wont downgrade.`);
+                } else {
+                    billingInfo = await syncSubscriptionState(shop, shopifySubscription, true);
+                }
             } catch (e) {
                 console.error(`[Billing Sync] Failed to sync subscription for ${shop}:`, e);
             }
@@ -325,7 +284,6 @@ export const loader = async ({ request }) => {
     return {
         storeName: shop.split('.')[0],
         shop,
-        isEmbedEnabled,
         hasPayment,
         isPremium,
         paymentStatus,
@@ -529,7 +487,6 @@ export default function DashboardPage() {
     const {
         storeName,
         shop,
-        isEmbedEnabled,
         hasPayment,
         isPremium,
         paymentStatus,
@@ -546,6 +503,16 @@ export default function DashboardPage() {
     const revalidator = useRevalidator();
     const navigate = useNavigate();
     const { t } = useLanguage();
+
+    // Async Theme Check
+    const themeFetcher = useFetcher();
+    useEffect(() => {
+        if (themeFetcher.state === "idle" && !themeFetcher.data) {
+            themeFetcher.load("/app/api/theme-status");
+        }
+    }, [themeFetcher]);
+
+    const isEmbedEnabled = themeFetcher.data?.isEmbedEnabled || false;
 
     const { timeRange, setTimeRange, usageTrend } = useDashboardStats(rawUsageStats);
     const [isCancelModalOpen, setCancelModalOpen] = useState(false);

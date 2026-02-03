@@ -14,13 +14,8 @@ import {
   Badge,
   Button,
   FooterHelp,
-  Link,
-  Icon
+  Link
 } from "@shopify/polaris";
-import {
-  CheckIcon,
-  AppsIcon
-} from "@shopify/polaris-icons";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -103,8 +98,8 @@ export default function Dashboard() {
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
                   <InlineStack gap="400" blockAlign="center">
-                    <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%' }}>
-                      <Icon source={CheckIcon} tone="success" />
+                    <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '20px', lineHeight: 1 }}>✅</span>
                     </div>
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2">{t('onboarding.step1.title')}</Text>
@@ -124,8 +119,8 @@ export default function Dashboard() {
                 <BlockStack gap="400">
                   <InlineStack align="space-between" blockAlign="center">
                     <InlineStack gap="400" blockAlign="center">
-                      <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%' }}>
-                        <Icon source={CheckIcon} tone="success" />
+                      <div style={{ padding: '8px', background: 'var(--p-color-bg-surface-success)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '20px', lineHeight: 1 }}>✅</span>
                       </div>
                       <BlockStack gap="100">
                         <Text variant="headingMd" as="h2">{t('onboarding.step2.title')}</Text>
@@ -170,9 +165,12 @@ export default function Dashboard() {
                     <div style={{
                       padding: '8px',
                       background: isEmbedEnabled ? 'var(--p-color-bg-surface-info)' : 'var(--p-color-bg-fill)',
-                      borderRadius: '50%'
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}>
-                      <Icon source={AppsIcon} tone={isEmbedEnabled ? "info" : "base"} />
+                      <span style={{ fontSize: '20px', lineHeight: 1 }}>🚀</span>
                     </div>
                     <BlockStack gap="100">
                       <Text variant="headingMd" as="h2" tone={!isEmbedEnabled ? "subdued" : "base"}>{t('onboarding.step3.title')}</Text>

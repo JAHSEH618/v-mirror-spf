@@ -4034,3 +4034,12 @@ body {
     color: #34d399 !important;
     border-color: transparent !important;
 }
+/* Force Icon Size Utility */
+.force-icon-size svg {
+    width: 20px !important;
+    height: 20px !important;
+    max-width: 20px !important;
+    max-height: 20px !important;
+    min-width: 20px !important;
+    min-height: 20px !important;
+}

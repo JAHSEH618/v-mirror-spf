@@ -12,16 +12,14 @@ import {
     Thumbnail,
     InlineGrid,
     BlockStack,
-    Card,
-    Icon
+    Card
 } from "@shopify/polaris";
 import {
-    ViewIcon,
-    CartIcon,
-    DeliveryIcon,
-    CashDollarIcon,
     ImageIcon
 } from "@shopify/polaris-icons";
+import adminStyles from "../styles/admin.css?url";
+
+export const links = () => [{ rel: "stylesheet", href: adminStyles }];
 
 export const loader = async ({ request }) => {
     const { session } = await authenticate.admin(request);
@@ -61,7 +59,7 @@ export const loader = async ({ request }) => {
         tryOns: totalsResult._sum.tryOnCount || 0,
         addToCarts: totalsResult._sum.addToCartCount || 0,
         orders: totalsResult._sum.orderedCount || 0,
-        revenue: totalsResult._sum.revenue || 0
+        revenue: totalsResult._sum.revenue ? Number(totalsResult._sum.revenue) : 0
     };
 
     // Transform data
@@ -91,8 +89,8 @@ const StatCard = ({ icon, value, label, tone = "base" }) => (
     <Card>
         <BlockStack gap="200">
             <InlineGrid columns="auto 1fr" gap="200" alignItems="center">
-                <div style={{ color: 'var(--p-color-icon-subdued)' }}>
-                    <Icon source={icon} tone="base" />
+                <div style={{ fontSize: '20px', lineHeight: 1 }}>
+                    {icon}
                 </div>
                 <Text variant="headingLg" as="h3" tone={tone === "success" ? "success" : tone === "caution" ? "critical" : "base"}>
                     {value}
@@ -147,7 +145,7 @@ export default function ProductsPage() {
                     <Text as="span" numeric>{orders}</Text>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
-                    <Text as="span" numeric>${revenue.toFixed(2)}</Text>
+                    <Text as="span" numeric>${Number(revenue).toFixed(2)}</Text>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
                     <Badge tone={conversion > 0.1 ? "success" : undefined}>
@@ -172,26 +170,26 @@ export default function ProductsPage() {
                 <Layout.Section>
                     <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="400" alignItems="stretch">
                         <StatCard
-                            icon={ViewIcon}
+                            icon="📊"
                             value={totals.tryOns.toLocaleString()}
                             label={t('products.totalTryOns') || 'Total Try-Ons'}
                             tone="success"
                         />
                         <StatCard
-                            icon={CartIcon}
+                            icon="🛒"
                             value={totals.addToCarts.toLocaleString()}
                             label={t('products.totalAddToCarts') || 'Add to Carts'}
                             tone="base"
                         />
                         <StatCard
-                            icon={DeliveryIcon}
+                            icon="📦"
                             value={totals.orders.toLocaleString()}
                             label={t('products.totalOrders') || 'Orders'}
                             tone="success"
                         />
                         <StatCard
-                            icon={CashDollarIcon}
-                            value={`$${totals.revenue.toLocaleString()}`}
+                            icon="💰"
+                            value={`$${(Number(totals.revenue) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                             label={t('products.totalRevenue') || 'Revenue Impact'}
                             tone="caution"
                         />
@@ -203,7 +201,6 @@ export default function ProductsPage() {
                         <IndexTable
                             resourceName={resourceName}
                             itemCount={products.length}
-                            selectedItemsCount="All"
                             headings={[
                                 { title: t('products.product') || 'Product' },
                                 { title: t('products.tryOns') || 'Try-Ons' },
