@@ -11,6 +11,7 @@ import { UpgradePlanModal } from "../components/UpgradePlanModal";
 import { StatusGrid } from "../components/dashboard/StatusGrid";
 import { UsageChart } from "../components/dashboard/UsageChart";
 import { useDashboardStats } from "../hooks/useDashboardStats";
+import { syncSubscriptionState, PLANS, PLAN_LIMITS } from "../services/subscription.server";
 
 export const links = () => [
     { rel: "stylesheet", href: adminStyles },
@@ -192,9 +193,9 @@ export const loader = async ({ request }) => {
         billingInfo = await prisma.shopSubscription.create({
             data: {
                 shopId: shop,
-                planName: hasPayment ? MONTHLY_PLAN : "Free Trial",
+                planName: hasPayment ? PLANS.PROFESSIONAL : "Free Trial",
                 status: "ACTIVE",
-                usageLimit: hasPayment ? 1000 : 2,
+                usageLimit: hasPayment ? PLAN_LIMITS[PLANS.PROFESSIONAL] : PLAN_LIMITS[PLANS.TRIAL],
                 cycleStartDate,
                 cycleEndDate
             }
@@ -209,67 +210,11 @@ export const loader = async ({ request }) => {
         if (!billingInfo.cycleEndDate && !shouldSync) {
             // Force sync if crucial data is missing even if cached
         } else if (shouldSync) {
-            // === SYNC WITH SHOPIFY ===
-            const shopifyPlan = shopifySubscription?.name || "Free Plan";
-            const shopifyStatus = shopifySubscription?.status || "CANCELLED";
-            const shopifyPeriodEnd = shopifySubscription?.currentPeriodEnd
-                ? new Date(shopifySubscription.currentPeriodEnd)
-                : null;
-
-            // Determine expected local state
-            let expectedPlan = "Free Plan";
-            let expectedLimit = 2;
-            let expectedStatus = shopifyStatus;
-
-            if (shopifySubscription && shopifyStatus === "ACTIVE") {
-                if (shopifyPlan.includes("Enterprise")) {
-                    expectedPlan = ENTERPRISE_PLAN;
-                    expectedLimit = 10000;
-                } else if (shopifyPlan.includes("Professional")) {
-                    expectedPlan = MONTHLY_PLAN;
-                    expectedLimit = 1000;
-                }
-                expectedStatus = "ACTIVE";
-            } else if (shopifyStatus === "FROZEN") {
-                expectedStatus = "FROZEN";
-                // Keep existing plan/limit for frozen state
-                expectedPlan = billingInfo.planName;
-                expectedLimit = billingInfo.usageLimit;
-            } else {
-                // FORCE DOWNGRADE: User requested that Cancel/Downgrade to Free updates strictly immediately.
-                // If Shopify says CANCELLED, we go to Free Plan immediately, ignoring potential grace period.
-                expectedStatus = shopifyStatus || "CANCELLED";
-                expectedPlan = "Free Plan";
-                expectedLimit = 2;
-
-                // Optional: You might want to reset usage or cycle here too, 
-                // but usually we just enforce the new limit.
-            }
-
-            // Detect Drift
-            if (
-                expectedPlan !== billingInfo.planName ||
-                expectedStatus !== billingInfo.status ||
-                expectedLimit !== billingInfo.usageLimit ||
-                (shopifyPeriodEnd && billingInfo.cycleEndDate?.getTime() !== shopifyPeriodEnd.getTime())
-            ) {
-                console.log(`[Billing Sync] Syncing ${shop}: Local(${billingInfo.planName}) -> Shopify(${shopifyPlan})`);
-                billingInfo = await prisma.shopSubscription.update({
-                    where: { shopId: shop },
-                    data: {
-                        planName: expectedPlan,
-                        status: expectedStatus,
-                        usageLimit: expectedLimit,
-                        cycleEndDate: shopifyPeriodEnd || billingInfo.cycleEndDate, // Prefer Shopify Truth
-                        lastSyncTime: new Date()
-                    }
-                });
-            } else {
-                // Touch lastSyncTime to prevent frequent checks
-                await prisma.shopSubscription.update({
-                    where: { shopId: shop },
-                    data: { lastSyncTime: new Date() }
-                });
+            // === SYNC WITH SHOPIFY (Using Centralized Service) ===
+            try {
+                billingInfo = await syncSubscriptionState(shop, shopifySubscription, true);
+            } catch (e) {
+                console.error(`[Billing Sync] Failed to sync subscription for ${shop}:`, e);
             }
         }
     }
@@ -476,14 +421,17 @@ export const action = async ({ request }) => {
         const cycleStartDate = currentBilling?.cycleStartDate || new Date();
         const cycleEndDate = new Date(cycleStartDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-        // Fix: User requested strict immediate downgrade. 
-        // Update to Free Plan immediately on cancellation.
+        // Fix: Use syncSubscriptionState to enforce "Free Plan" state consistently 
+        // We know they are cancelling, so we can mock a cancelled shopify object or 
+        // just update directly if we want instant feedback.
+        // For standard consistency, we should direct update if we want instant cutoff.
+
         await prisma.shopSubscription.update({
             where: { shopId: shop },
             data: {
                 status: "CANCELLED",
-                planName: "Free Plan",
-                usageLimit: 2,
+                planName: PLANS.FREE,
+                usageLimit: PLAN_LIMITS[PLANS.FREE],
                 // We keep cycleEndDate to track when their "theoretical" paid period ends,
                 // OR we could reset it. Keeping it is safer for sync logic referencing.
                 cycleEndDate

@@ -1,6 +1,7 @@
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { webhookResponse } from "../utils/responses.server";
+import { syncSubscriptionState } from "../services/subscription.server";
 
 export const action = async ({ request }) => {
     const { topic, shop, session, admin, payload } = await authenticate.webhook(request);
@@ -37,111 +38,33 @@ export const action = async ({ request }) => {
         }
     }
 
-    // The topics handled here are:
-    // APP_SUBSCRIPTIONS_UPDATE
-
     console.log(`Received ${topic} webhook for ${shop}`);
 
     if (topic === "APP_SUBSCRIPTIONS_UPDATE") {
         const subscription = payload.app_subscription;
-        const planName = subscription.name;
-        const status = subscription.status;
 
-        console.log(`Handling subscription update for ${shop}: ${planName} -> ${status}`);
+        console.log(`Handling subscription update for ${shop}: ${subscription.name} -> ${subscription.status}`);
 
-        let dbStatus = "ACTIVE";
-        let dbPlanName = "Free Plan";
-        let dbLimit = 2; // Default free limit
-
-        // Map Shopify status to internal status/plan
-        // Shopify statuses: ACTIVE, DECLINED, EXPIRED, FROZEN, CANCELLED, PENDING
-        switch (status) {
-            case "ACTIVE":
-                dbStatus = "ACTIVE";
-                // Determine plan based on subscription name
-                if (planName.includes("Enterprise")) {
-                    dbPlanName = "Enterprise Plan";
-                    dbLimit = 10000;
-                } else if (planName.includes("Professional")) {
-                    dbPlanName = "Professional Plan";
-                    dbLimit = 1000;
-                } else {
-                    // Unknown paid plan - default to professional limits
-                    dbPlanName = planName;
-                    dbLimit = 1000;
-                }
-                break;
-
-            case "FROZEN":
-                // Merchant's billing is frozen - keep plan but mark status
-                // They should retain access until unfrozen or cancelled
-                dbStatus = "FROZEN";
-                if (planName.includes("Enterprise")) {
-                    dbPlanName = "Enterprise Plan";
-                    dbLimit = 10000;
-                } else if (planName.includes("Professional")) {
-                    dbPlanName = "Professional Plan";
-                    dbLimit = 1000;
-                }
-                break;
-
-            case "PENDING":
-                // Subscription is pending approval - preserve current plan/limits
-                // Query existing billing to not reset their current state
-                dbStatus = "PENDING";
-                const existingSub = await prisma.shopSubscription.findUnique({ where: { shopId: shop } });
-                if (existingSub) {
-                    dbPlanName = existingSub.planName;
-                    dbLimit = existingSub.usageLimit;
-                }
-                break;
-
-            case "CANCELLED":
-            case "EXPIRED":
-            case "DECLINED":
-            default:
-                // Downgrade to Free for all terminal states
-                dbStatus = status === "CANCELLED" ? "CANCELLED" : status === "EXPIRED" ? "EXPIRED" : "DECLINED";
-                dbPlanName = "Free Plan";
-                dbLimit = 2;
-                break;
-        }
-
-        // Update DB (ShopSubscription)
+        // OPTIMIZATION: Use centralized sync logic
         try {
-            // Ensure shop exists
-            await prisma.shop.upsert({
-                where: { id: shop },
-                update: {},
-                create: { id: shop }
-            });
+            // syncSubscriptionState expects a shopify subscription object
+            // The webhook payload has 'app_subscription' which matches the structure reasonably well,
+            // but we should ensure naming aligns.
+            // Payload: { app_subscription: { status, name, current_period_end, ... } }
+            // API Object: { status, name, currentPeriodEnd, ... }
+            // Note: Webhook uses snake_case (current_period_end) vs API camelCase.
+            // We need to normalize for the service if it expects API format.
 
-            const currentPeriodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : undefined;
-            // Fallback for cycleEndDate: if provided by Shopify use it, otherwise keep existing or set default
+            // Normalize payload to match API object structure for the service
+            const normalizedSubscription = {
+                ...subscription,
+                currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end) : undefined
+            };
 
-            await prisma.shopSubscription.upsert({
-                where: { shopId: shop },
-                update: {
-                    planName: dbPlanName,
-                    status: dbStatus,
-                    usageLimit: dbLimit,
-                    cycleEndDate: currentPeriodEnd, // Trust Shopify's date if present
-                    lastSyncTime: new Date()
-                },
-                create: {
-                    shopId: shop,
-                    planName: dbPlanName,
-                    status: dbStatus,
-                    usageLimit: dbLimit,
-                    currentUsage: 0,
-                    cycleStartDate: new Date(), // New sub
-                    cycleEndDate: currentPeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                    lastSyncTime: new Date()
-                }
-            });
-            console.log(`[Webhook] Updated subscription for ${shop}: ${dbPlanName} (${dbStatus})`);
+            await syncSubscriptionState(shop, normalizedSubscription, true);
+            console.log(`[Webhook] Successfully synced subscription for ${shop}`);
         } catch (e) {
-            console.error(`[Webhook] Failed to update billing info for ${shop}:`, e);
+            console.error(`[Webhook] Failed to sync subscription for ${shop}:`, e);
         }
     }
 
