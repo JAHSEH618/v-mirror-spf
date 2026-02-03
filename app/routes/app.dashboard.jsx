@@ -369,7 +369,7 @@ export const loader = async ({ request }) => {
     // However, to satisfy the user, we can calculate a rough trend if we had daily revenue stats.
     // For now, let's at least make them pulsate or show 0.0 correctly.
     const conversionChange = 0.0;
-    const revenueImpact = totalRevenue;
+    const revenueImpact = Number(totalRevenue) || 0;
     // Fix: Only show trend if there is actual revenue. Avoid "$0 +100%" which is confusing.
     const revenueChange = revenueImpact > 0 ? tryOnChange : 0;
 
